@@ -17,6 +17,7 @@ export type AuthStackParamList = {
 };
 
 export type MainStackParamList = {
+  Welcome: undefined;
   CommunityList: undefined;
   CommunityDetail: { communityId: string };
   CreatePost: { communityId: string; communityName: string };

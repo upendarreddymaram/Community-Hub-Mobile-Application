@@ -1,6 +1,7 @@
 export const colors = {
   primary: '#2563EB',
   primaryDark: '#1D4ED8',
+  primaryMuted: '#EFF6FF',
   background: '#F8FAFC',
   surface: '#FFFFFF',
   text: '#0F172A',
@@ -9,6 +10,7 @@ export const colors = {
   error: '#DC2626',
   errorBackground: '#FEF2F2',
   success: '#16A34A',
+  successBackground: '#F0FDF4',
   warning: '#D97706',
   offline: '#92400E',
   offlineBackground: '#FEF3C7',
@@ -22,6 +24,15 @@ export const spacing = {
   md: 16,
   lg: 24,
   xl: 32,
+  xxl: 48,
+} as const;
+
+export const radii = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  pill: 999,
 } as const;
 
 export const typography = {
