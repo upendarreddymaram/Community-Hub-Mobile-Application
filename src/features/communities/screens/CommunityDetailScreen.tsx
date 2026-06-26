@@ -1,16 +1,25 @@
 import React, { useCallback, useMemo } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, ErrorView, LoadingView, OfflineBanner } from '../../../components/common';
+import {
+  Button,
+  CommunityDetailSkeleton,
+  PostListSkeleton,
+  ErrorView,
+  LoadingView,
+  OfflineSyncBanner,
+} from '../../../components/common';
 import { ErrorBoundary } from '../../../components/common/ErrorBoundary';
 import { PostCard } from '../../../features/posts/components/PostCard';
 import { useCommunityDetail } from '../hooks/useCommunities';
 import { useJoinLeaveCommunity } from '../hooks/useJoinLeaveCommunity';
-import { useCommunityPosts } from '../../../features/posts/hooks/usePosts';
+import { useInfiniteCommunityPosts } from '../../../features/posts/hooks/usePosts';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
+import { useOfflineSync } from '../../../hooks/useOfflineSync';
+import { useResponsiveLayout } from '../../../hooks/useResponsiveLayout';
 import { useTheme } from '../../../providers/ThemeProvider';
 import { useThemedStyles } from '../../../hooks/useThemedStyles';
-import { useOfflineQueueStore } from '../../../store/offlineQueueStore';
 import type { Post } from '../../../types/post';
 import type { MainStackParamList } from '../../../types/navigation';
 import type { ThemeColors } from '../../../theme/colors';
@@ -37,6 +46,9 @@ function createStyles(colors: ThemeColors) {
       borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.border,
+    },
+    headerCardWide: {
+      marginHorizontal: spacing.xl,
     },
     name: {
       ...typography.title,
@@ -116,11 +128,12 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
   const { communityId } = route.params;
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { contentContainerStyle, isWide } = useResponsiveLayout();
   const { isOnline } = useNetworkStatus();
-  const pendingCount = useOfflineQueueStore((state) => state.queue.length);
+  const { pendingCount, isSyncing, syncError, retrySync } = useOfflineSync();
 
   const communityQuery = useCommunityDetail(communityId);
-  const postsQuery = useCommunityPosts(communityId);
+  const postsQuery = useInfiniteCommunityPosts(communityId);
   const {
     join,
     leave,
@@ -133,7 +146,10 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
   } = useJoinLeaveCommunity(communityId);
 
   const community = communityQuery.data;
-  const posts = postsQuery.data ?? [];
+  const posts = useMemo(
+    () => postsQuery.data?.pages.flatMap((page) => page.data) ?? [],
+    [postsQuery.data],
+  );
 
   const handleToggleMembership = useCallback(() => {
     if (!community) {
@@ -152,6 +168,12 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
     void communityQuery.refetch();
     void postsQuery.refetch();
   }, [communityQuery, postsQuery]);
+
+  const handleLoadMorePosts = useCallback(() => {
+    if (postsQuery.hasNextPage && !postsQuery.isFetchingNextPage) {
+      void postsQuery.fetchNextPage();
+    }
+  }, [postsQuery]);
 
   const renderPost = useCallback(
     ({ item }: { item: Post }) => (
@@ -176,11 +198,13 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
 
     return (
       <>
-        <View style={styles.headerCard}>
-          <Text style={styles.name}>{community.name}</Text>
+        <View style={[styles.headerCard, isWide && styles.headerCardWide]}>
+          <Text style={styles.name} accessibilityRole="header">
+            {community.name}
+          </Text>
           <Text style={styles.description}>{community.description}</Text>
 
-          <View style={styles.statsRow}>
+          <View style={styles.statsRow} accessibilityRole="summary">
             <StatItem label="Members" value={community.memberCount.toLocaleString()} styles={styles} />
             <StatItem label="Posts" value={community.postCount.toLocaleString()} styles={styles} />
             <StatItem label="Category" value={community.category} styles={styles} />
@@ -192,10 +216,20 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
             loading={isJoining || isLeaving}
             onPress={handleToggleMembership}
             style={styles.membershipButton}
+            accessibilityLabel={
+              community.isJoined
+                ? `Leave ${community.name}`
+                : `Join ${community.name}`
+            }
+            accessibilityHint={
+              community.isJoined
+                ? 'Removes this community from your joined list'
+                : 'Adds this community to your joined list'
+            }
           />
 
           {membershipError ? (
-            <View style={styles.actionError}>
+            <View style={styles.actionError} accessibilityLiveRegion="polite">
               <Text style={styles.actionErrorText}>
                 {membershipError instanceof Error
                   ? membershipError.message
@@ -205,6 +239,9 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
                 label="Retry"
                 variant="ghost"
                 onPress={() => (community.isJoined ? retryLeave() : retryJoin())}
+                accessibilityLabel={
+                  community.isJoined ? 'Retry leave community' : 'Retry join community'
+                }
               />
             </View>
           ) : null}
@@ -218,12 +255,20 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
               })
             }
             style={styles.createPostButton}
+            accessibilityHint={`Opens the create post form for ${community.name}`}
           />
         </View>
 
         <View style={styles.postsHeader}>
-          <Text style={styles.sectionTitle}>Posts</Text>
-          <Button label="Refresh" variant="secondary" onPress={handleRefresh} />
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            Posts
+          </Text>
+          <Button
+            label="Refresh"
+            variant="secondary"
+            onPress={handleRefresh}
+            accessibilityLabel="Refresh community and posts"
+          />
         </View>
       </>
     );
@@ -235,15 +280,24 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
     isJoining,
     isLeaving,
     membershipError,
+    isWide,
     navigation,
     retryJoin,
     retryLeave,
     styles,
   ]);
 
+  const listFooter = useMemo(() => {
+    if (postsQuery.isFetchingNextPage) {
+      return <LoadingView message="Loading more posts..." />;
+    }
+
+    return null;
+  }, [postsQuery.isFetchingNextPage]);
+
   const listEmpty = useMemo(() => {
     if (postsQuery.isLoading) {
-      return <LoadingView message="Loading posts..." />;
+      return <PostListSkeleton />;
     }
 
     if (postsQuery.isError) {
@@ -265,7 +319,11 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
   }, [postsQuery.error, postsQuery.isError, postsQuery.isLoading, postsQuery.refetch, styles.emptyPosts]);
 
   if (communityQuery.isLoading && !community) {
-    return <LoadingView message="Loading community..." />;
+    return (
+      <View style={styles.container}>
+        <CommunityDetailSkeleton />
+      </View>
+    );
   }
 
   if (communityQuery.isError && !community) {
@@ -288,18 +346,28 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
   return (
     <ErrorBoundary fallbackMessage="Unable to render community details.">
       <View style={styles.container}>
-        {!isOnline ? <OfflineBanner pendingActions={pendingCount} /> : null}
+        <OfflineSyncBanner
+          isOnline={isOnline}
+          pendingActions={pendingCount}
+          isSyncing={isSyncing}
+          syncError={syncError}
+          onRetrySync={retrySync}
+        />
 
-        <FlatList
+        <FlashList
           data={posts}
           renderItem={renderPost}
           keyExtractor={keyExtractor}
           ItemSeparatorComponent={renderSeparator}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={listEmpty}
+          ListFooterComponent={listFooter}
+          onEndReached={handleLoadMorePosts}
+          onEndReachedThreshold={0.4}
           contentContainerStyle={[
             styles.listContent,
             posts.length === 0 && styles.listContentEmpty,
+            contentContainerStyle,
           ]}
           refreshControl={
             <RefreshControl
@@ -310,9 +378,6 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
             />
           }
           showsVerticalScrollIndicator={false}
-          initialNumToRender={6}
-          maxToRenderPerBatch={8}
-          windowSize={7}
         />
       </View>
     </ErrorBoundary>
@@ -329,7 +394,7 @@ function StatItem({
   styles: ReturnType<typeof createStyles>;
 }) {
   return (
-    <View style={styles.statItem}>
+    <View style={styles.statItem} accessibilityLabel={`${label}: ${value}`}>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>

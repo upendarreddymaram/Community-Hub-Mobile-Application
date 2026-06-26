@@ -1,5 +1,5 @@
 import type { Community, CommunitiesResponse, CommunityFilters } from '../types/community';
-import type { Post } from '../types/post';
+import type { Post, PostsPageResponse } from '../types/post';
 import { API_CONFIG } from '../utils/constants';
 import { sortCommunities } from '../utils/communitySort';
 import { stripHtml } from '../utils/html';
@@ -84,6 +84,8 @@ function applyCommunityFilters(
   communities: Community[],
   filters: CommunityFilters,
 ): Community[] {
+  // Client-side filter/sort after a single /site.json fetch — fine for ~45 categories.
+  // At larger scale, push search/sort to the API or index categories server-side.
   let result = communities;
 
   if (filters.search.trim()) {
@@ -212,9 +214,14 @@ export const discourseApi = {
   },
 
   getTopicsForCommunity: async (communityId: string): Promise<Post[]> => {
+    const page = await discourseApi.getTopicsPage(communityId, 1);
+    return page.data;
+  },
+
+  getTopicsPage: async (communityId: string, page: number): Promise<PostsPageResponse> => {
     const category = await discourseApi.getCategoryById(communityId);
     const response = await apiRequest<DiscourseCategoryTopicsResponse>(
-      `${API_CONFIG.DISCOURSE_BASE_URL}/c/${category.slug}/${category.id}.json`,
+      `${API_CONFIG.DISCOURSE_BASE_URL}/c/${category.slug}/${category.id}.json?page=${page}`,
     );
 
     const posts = response.topic_list.topics
@@ -224,13 +231,20 @@ export const discourseApi = {
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
 
-    logApiInfo('Posts mapped for community', {
+    const hasMore = Boolean(response.topic_list.more_topics_url);
+
+    logApiInfo('Posts page mapped for community', {
       communityId,
       slug: category.slug,
+      page,
       livePostCount: posts.length,
-      sample: posts.slice(0, 2),
+      hasMore,
     });
 
-    return posts;
+    return {
+      data: posts,
+      page,
+      hasMore,
+    };
   },
 };

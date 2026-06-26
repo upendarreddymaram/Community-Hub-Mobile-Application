@@ -1,10 +1,18 @@
-export type OfflineActionType = 'join' | 'leave';
+export type OfflineActionType = 'join' | 'leave' | 'create_post';
+
+export interface CreatePostOfflinePayload {
+  postId: string;
+  title: string;
+  body: string;
+  authorName: string;
+}
 
 export interface OfflineAction {
   id: string;
   type: OfflineActionType;
   communityId: string;
   createdAt: string;
+  payload?: CreatePostOfflinePayload;
 }
 
 export type RootStackParamList = {

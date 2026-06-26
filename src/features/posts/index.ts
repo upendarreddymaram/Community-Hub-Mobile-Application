@@ -1,7 +1,7 @@
 export { postsApi } from './api/postsApi';
 export { PostCard } from './components/PostCard';
 export {
-  useCommunityPosts,
+  useInfiniteCommunityPosts,
   useCreatePost,
   usePostDraft,
   useSavePostDraft,

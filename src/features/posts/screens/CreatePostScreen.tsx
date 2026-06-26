@@ -8,9 +8,10 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, Input, LoadingView, OfflineBanner } from '../../../components/common';
+import { Button, Input, LoadingView, OfflineSyncBanner } from '../../../components/common';
 import { useCreatePost, usePostDraft, useSavePostDraft } from '../hooks/usePosts';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
+import { useOfflineSync } from '../../../hooks/useOfflineSync';
 import { useThemedStyles } from '../../../hooks/useThemedStyles';
 import type { MainStackParamList } from '../../../types/navigation';
 import type { PostDraft } from '../../../types/post';
@@ -73,6 +74,7 @@ function CreatePostForm({
 }: CreatePostFormProps) {
   const styles = useThemedStyles(createStyles);
   const { isOnline } = useNetworkStatus();
+  const { pendingCount, isSyncing, syncError, retrySync } = useOfflineSync();
   const saveDraft = useSavePostDraft(communityId);
   const createPost = useCreatePost(communityId);
 
@@ -134,7 +136,13 @@ function CreatePostForm({
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {!isOnline ? <OfflineBanner /> : null}
+      <OfflineSyncBanner
+        isOnline={isOnline}
+        pendingActions={pendingCount}
+        isSyncing={isSyncing}
+        syncError={syncError}
+        onRetrySync={retrySync}
+      />
 
       <ScrollView
         contentContainerStyle={styles.content}

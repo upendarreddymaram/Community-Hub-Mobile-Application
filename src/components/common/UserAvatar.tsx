@@ -74,7 +74,7 @@ export function UserAvatar({ name, size = 40, onPress, style }: UserAvatarProps)
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Open account"
+      accessibilityLabel={`Open profile for ${name}`}
       onPress={onPress}
       style={({ pressed }) => [pressed && styles.pressed]}
     >

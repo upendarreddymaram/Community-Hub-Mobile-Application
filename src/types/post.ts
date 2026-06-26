@@ -25,3 +25,9 @@ export interface PostDraft {
   body: string;
   updatedAt: string;
 }
+
+export interface PostsPageResponse {
+  data: Post[];
+  page: number;
+  hasMore: boolean;
+}

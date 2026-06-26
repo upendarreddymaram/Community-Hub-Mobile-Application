@@ -1,7 +1,7 @@
-import type { CreatePostPayload, Post, PostDraft } from '../../../types/post';
+import type { CreatePostPayload, Post, PostDraft, PostsPageResponse } from '../../../types/post';
+import type { CreatePostOfflinePayload, OfflineAction } from '../../../types/navigation';
 import { STORAGE_KEYS } from '../../../utils/constants';
 import { getJsonItem, removeItem, setJsonItem } from '../../../utils/storage';
-import { ApiError } from '../../../api/client';
 import { discourseApi } from '../../../api/discourseApi';
 import { logApiInfo } from '../../../utils/apiLogger';
 
@@ -40,29 +40,45 @@ function mergePosts(livePosts: Post[], localPosts: Post[]): Post[] {
 }
 
 export const postsApi = {
-  getPosts: async (communityId: string): Promise<Post[]> => {
-    const [livePosts, localPosts] = await Promise.all([
-      discourseApi.getTopicsForCommunity(communityId),
-      getLocalPosts(communityId),
-    ]);
+  getPostsPage: async (communityId: string, page: number): Promise<PostsPageResponse> => {
+    const livePage = await discourseApi.getTopicsPage(communityId, page);
 
-    const merged = mergePosts(livePosts, localPosts);
+    if (page === 1) {
+      const localPosts = await getLocalPosts(communityId);
+      const merged = mergePosts(livePage.data, localPosts);
 
-    logApiInfo('Posts merged for community', {
+      logApiInfo('Posts page merged for community', {
+        communityId,
+        page,
+        liveCount: livePage.data.length,
+        localCount: localPosts.length,
+        totalCount: merged.length,
+        hasMore: livePage.hasMore,
+      });
+
+      return {
+        ...livePage,
+        data: merged,
+      };
+    }
+
+    logApiInfo('Posts page loaded for community', {
       communityId,
-      liveCount: livePosts.length,
-      localCount: localPosts.length,
-      totalCount: merged.length,
+      page,
+      liveCount: livePage.data.length,
+      hasMore: livePage.hasMore,
     });
 
-    return merged;
+    return livePage;
   },
 
-  createPost: async (payload: CreatePostPayload, authorName: string): Promise<Post> => {
-    await discourseApi.getCategoryById(payload.communityId);
-
+  createPostLocal: async (
+    payload: CreatePostPayload,
+    authorName: string,
+    postId?: string,
+  ): Promise<Post> => {
     const post: Post = {
-      id: `local_${Date.now()}`,
+      id: postId ?? `local_${Date.now()}`,
       communityId: payload.communityId,
       title: payload.title.trim(),
       body: payload.body.trim(),
@@ -75,6 +91,33 @@ export const postsApi = {
     await removeItem(draftKey(payload.communityId));
 
     return post;
+  },
+
+  createPost: async (payload: CreatePostPayload, authorName: string): Promise<Post> => {
+    return postsApi.createPostLocal(payload, authorName);
+  },
+
+  syncQueuedPost: async (action: OfflineAction): Promise<void> => {
+    const payload = action.payload as CreatePostOfflinePayload | undefined;
+    if (!payload) {
+      throw new Error('Missing post payload for queued create action');
+    }
+
+    const existing = await getLocalPosts(action.communityId);
+    const alreadySaved = existing.some((post) => post.id === payload.postId);
+    if (alreadySaved) {
+      return;
+    }
+
+    await postsApi.createPostLocal(
+      {
+        communityId: action.communityId,
+        title: payload.title,
+        body: payload.body,
+      },
+      payload.authorName,
+      payload.postId,
+    );
   },
 
   saveDraft: async (draft: PostDraft): Promise<void> => {
@@ -112,13 +155,5 @@ export const postsApi = {
       communityId,
       existing.map((post) => (post.id === oldId ? newPost : post)),
     );
-  },
-
-  validateCommunityExists: async (communityId: string): Promise<void> => {
-    try {
-      await discourseApi.getCategoryById(communityId);
-    } catch {
-      throw new ApiError('Community not found', 404);
-    }
   },
 };

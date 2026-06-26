@@ -1,11 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import {
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -13,16 +8,18 @@ import {
   SearchFilterBar,
 } from '../components/CommunityCard';
 import {
+  CommunityListSkeleton,
   EmptyView,
   ErrorView,
-  LoadingView,
-  OfflineBanner,
+  OfflineSyncBanner,
   UserAvatar,
 } from '../../../components/common';
 import { useCommunities } from '../hooks/useCommunities';
+import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
+import { useOfflineSync } from '../../../hooks/useOfflineSync';
+import { useResponsiveLayout } from '../../../hooks/useResponsiveLayout';
 import { useAuthStore } from '../../../features/auth/store/authStore';
-import { useOfflineQueueStore } from '../../../store/offlineQueueStore';
 import type { Community, CommunitySortOption } from '../../../types/community';
 import type { MainStackParamList } from '../../../types/navigation';
 import { useTheme } from '../../../providers/ThemeProvider';
@@ -45,6 +42,12 @@ function createStyles(colors: ThemeColors) {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
       paddingBottom: spacing.md,
+    },
+    topBarWide: {
+      alignSelf: 'center',
+      width: '100%',
+      maxWidth: 720,
+      paddingHorizontal: spacing.xl,
     },
     titleBlock: {
       flex: 1,
@@ -84,18 +87,20 @@ function getFirstName(fullName: string): string {
 export function CommunityListScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { contentContainerStyle, isWide } = useResponsiveLayout();
   const userName = useAuthStore((state) => state.session?.user.name ?? 'Guest');
   const { isOnline } = useNetworkStatus();
-  const pendingCount = useOfflineQueueStore((state) => state.queue.length);
+  const { pendingCount, isSyncing, syncError, retrySync } = useOfflineSync();
   const insets = useSafeAreaInsets();
 
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 300);
   const [sort, setSort] = useState<CommunitySortOption>('members');
   const [joinedOnly, setJoinedOnly] = useState(false);
 
   const filters = useMemo(
-    () => ({ search, sort, joinedOnly }),
-    [search, sort, joinedOnly],
+    () => ({ search: debouncedSearch, sort, joinedOnly }),
+    [debouncedSearch, sort, joinedOnly],
   );
 
   const {
@@ -142,28 +147,46 @@ export function CommunityListScreen({ navigation }: Props) {
   const listHeader = useMemo(
     () => (
       <SearchFilterBar
-        search={search}
-        onSearchChange={setSearch}
+        search={searchInput}
+        onSearchChange={setSearchInput}
         sort={sort}
         onSortChange={setSort}
         joinedOnly={joinedOnly}
         onToggleJoined={() => setJoinedOnly((value) => !value)}
       />
     ),
-    [search, sort, joinedOnly],
+    [searchInput, sort, joinedOnly],
   );
 
   if (isLoading && !data) {
-    return <LoadingView message="Loading communities..." />;
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={[styles.topBar, isWide && styles.topBarWide]}>
+          <View style={styles.titleBlock}>
+            <Text style={styles.screenTitle}>Communities</Text>
+            <Text style={styles.screenSubtitle}>Hi, {getFirstName(userName)}</Text>
+          </View>
+        </View>
+        <CommunityListSkeleton />
+      </SafeAreaView>
+    );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {!isOnline ? <OfflineBanner pendingActions={pendingCount} /> : null}
+      <OfflineSyncBanner
+        isOnline={isOnline}
+        pendingActions={pendingCount}
+        isSyncing={isSyncing}
+        syncError={syncError}
+        onRetrySync={retrySync}
+      />
 
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, isWide && styles.topBarWide]}>
         <View style={styles.titleBlock}>
-          <Text style={styles.screenTitle}>Communities</Text>
+          <Text style={styles.screenTitle} accessibilityRole="header">
+            Communities
+          </Text>
           <Text style={styles.screenSubtitle}>Hi, {getFirstName(userName)}</Text>
         </View>
         <UserAvatar
@@ -178,7 +201,7 @@ export function CommunityListScreen({ navigation }: Props) {
           onRetry={() => void refetch()}
         />
       ) : (
-        <FlatList
+        <FlashList
           data={communities}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
@@ -186,6 +209,7 @@ export function CommunityListScreen({ navigation }: Props) {
           contentContainerStyle={[
             communities.length === 0 ? styles.emptyList : styles.listContent,
             { paddingBottom: listBottomPadding },
+            contentContainerStyle,
           ]}
           refreshControl={
             <RefreshControl
@@ -204,7 +228,7 @@ export function CommunityListScreen({ navigation }: Props) {
               message="Try adjusting your search or filters."
               actionLabel="Clear filters"
               onAction={() => {
-                setSearch('');
+                setSearchInput('');
                 setJoinedOnly(false);
               }}
             />
@@ -214,13 +238,8 @@ export function CommunityListScreen({ navigation }: Props) {
               <Text style={styles.footerText}>Loading more...</Text>
             ) : null
           }
-          removeClippedSubviews
-          initialNumToRender={8}
-          maxToRenderPerBatch={10}
-          windowSize={7}
         />
       )}
     </SafeAreaView>
   );
 }
-

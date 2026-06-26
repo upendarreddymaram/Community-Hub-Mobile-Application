@@ -9,7 +9,7 @@ import { RootNavigator } from '../navigation/RootNavigator';
 import { useAuthStore } from '../features/auth/store/authStore';
 import { useJoinedCommunitiesStore } from '../features/communities/store/joinedCommunitiesStore';
 import { useOfflineQueueStore } from '../store/offlineQueueStore';
-import { useOfflineSync } from '../features/communities/hooks/useJoinLeaveCommunity';
+import { useOfflineSync } from '../hooks/useOfflineSync';
 import { ErrorBoundary } from '../components/common/ErrorBoundary';
 import { ThemeProvider, useTheme } from './ThemeProvider';
 import { ApiAuthBootstrap } from './ApiAuthBootstrap';
@@ -18,12 +18,14 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
       gcTime: 1000 * 60 * 60 * 24,
       staleTime: 1000 * 60,
       refetchOnReconnect: true,
     },
     mutations: {
       retry: 1,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     },
   },
 });

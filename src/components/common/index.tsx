@@ -15,6 +15,7 @@ import { spacing, typography } from '../../theme';
 
 export { AppLogo } from './AppLogo';
 export { UserAvatar } from './UserAvatar';
+export { CommunityListSkeleton, CommunityDetailSkeleton, PostListSkeleton, SkeletonBox } from './Skeleton';
 
 function createCommonStyles(colors: ThemeColors) {
   return StyleSheet.create({
@@ -141,6 +142,21 @@ function createCommonStyles(colors: ThemeColors) {
       textAlign: 'center',
       fontWeight: '600',
     },
+    syncErrorBanner: {
+      backgroundColor: colors.errorBackground,
+    },
+    syncErrorText: {
+      color: colors.error,
+    },
+    syncRetry: {
+      marginTop: spacing.xs,
+      alignSelf: 'center',
+    },
+    syncRetryText: {
+      color: colors.primary,
+      ...typography.small,
+      fontWeight: '700',
+    },
   });
 }
 
@@ -151,6 +167,8 @@ interface ButtonProps {
   loading?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 export function Button({
@@ -160,6 +178,8 @@ export function Button({
   loading = false,
   disabled = false,
   style,
+  accessibilityLabel,
+  accessibilityHint,
 }: ButtonProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => createCommonStyles(colors), [colors]);
@@ -168,6 +188,9 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
       disabled={isDisabled}
       onPress={onPress}
       style={({ pressed }) => [
@@ -300,6 +323,61 @@ export function OfflineBanner({ pendingActions = 0 }: { pendingActions?: number 
         You are offline. Please check your internet connection and try again.
         {pendingActions > 0 ? ` • ${pendingActions} action(s) queued` : ''}.
       </Text>
+    </View>
+  );
+}
+
+export function OfflineSyncBanner({
+  isOnline,
+  pendingActions = 0,
+  isSyncing = false,
+  syncError = null,
+  onRetrySync,
+}: {
+  isOnline: boolean;
+  pendingActions?: number;
+  isSyncing?: boolean;
+  syncError?: string | null;
+  onRetrySync?: () => void;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createCommonStyles(colors), [colors]);
+
+  const shouldShow =
+    !isOnline || isSyncing || Boolean(syncError) || (isOnline && pendingActions > 0);
+
+  if (!shouldShow) {
+    return null;
+  }
+
+  let message = 'You are offline. Cached data is shown where available.';
+  if (isOnline && isSyncing) {
+    message = `Syncing ${pendingActions} offline action(s)...`;
+  } else if (isOnline && syncError) {
+    message = `Sync failed: ${syncError}`;
+  } else if (!isOnline && pendingActions > 0) {
+    message = `You are offline. ${pendingActions} action(s) queued for sync.`;
+  } else if (isOnline && pendingActions > 0) {
+    message = `${pendingActions} offline action(s) waiting to sync.`;
+  }
+
+  return (
+    <View
+      style={[styles.offlineBanner, syncError ? styles.syncErrorBanner : null]}
+      accessibilityLiveRegion="polite"
+    >
+      <Text style={[styles.offlineText, syncError ? styles.syncErrorText : null]}>
+        {message}
+      </Text>
+      {syncError && onRetrySync ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onRetrySync}
+          style={styles.syncRetry}
+        >
+          <Text style={styles.syncRetryText}>Retry sync</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

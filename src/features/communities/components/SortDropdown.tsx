@@ -40,6 +40,7 @@ export function SortDropdown({
         <Pressable
           accessibilityRole="menuitem"
           accessibilityState={{ selected: isSelected }}
+          accessibilityLabel={`Sort by ${item.label}`}
           onPress={() => onSelect(item.value)}
           style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
         >

@@ -20,13 +20,34 @@ const DEFAULT_HEADERS = {
   'User-Agent': API_CONFIG.USER_AGENT,
 };
 
-export async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
+const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return RETRYABLE_STATUS_CODES.has(error.statusCode);
+  }
+
+  if (error instanceof Error && error.name === 'AbortError') {
+    return true;
+  }
+
+  return error instanceof TypeError;
+}
+
+function retryDelayMs(attempt: number): number {
+  const exponential = API_CONFIG.RETRY_BASE_DELAY_MS * 2 ** attempt;
+  return Math.min(exponential, 8000);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function executeRequest<T>(url: string, options?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), API_CONFIG.REQUEST_TIMEOUT_MS);
-  const method = options?.method ?? 'GET';
-  const startedAt = Date.now();
-
-  logApiStart(url, method);
 
   try {
     const authHeaders = resolveAuthHeaders(
@@ -49,11 +70,8 @@ export async function apiRequest<T>(url: string, options?: RequestInit): Promise
       );
     }
 
-    const data = (await response.json()) as T;
-    logApiSuccess(url, data, Date.now() - startedAt);
-    return data;
+    return (await response.json()) as T;
   } catch (error) {
-    logApiFailure(url, error, Date.now() - startedAt);
     if (error instanceof ApiError) {
       throw error;
     }
@@ -69,6 +87,36 @@ export async function apiRequest<T>(url: string, options?: RequestInit): Promise
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
+  const method = options?.method ?? 'GET';
+  const startedAt = Date.now();
+
+  logApiStart(url, method);
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= API_CONFIG.MAX_RETRIES; attempt += 1) {
+    try {
+      const data = await executeRequest<T>(url, options);
+      logApiSuccess(url, data, Date.now() - startedAt);
+      return data;
+    } catch (error) {
+      lastError = error;
+      const canRetry = attempt < API_CONFIG.MAX_RETRIES && isRetryableError(error);
+
+      if (!canRetry) {
+        logApiFailure(url, error, Date.now() - startedAt);
+        throw error;
+      }
+
+      await sleep(retryDelayMs(attempt));
+    }
+  }
+
+  logApiFailure(url, lastError, Date.now() - startedAt);
+  throw lastError;
 }
 
 /** Used only by mocked auth — keeps simulated latency for login demos. */

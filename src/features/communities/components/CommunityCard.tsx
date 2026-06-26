@@ -253,6 +253,7 @@ export function SearchFilterBar({
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ expanded: sortExpanded }}
+            accessibilityLabel={`Sort communities, currently ${activeSortLabel}`}
             onPress={handleSortToggle}
             style={({ pressed }) => [
               styles.sortTrigger,
@@ -267,6 +268,7 @@ export function SearchFilterBar({
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ selected: joinedOnly }}
+          accessibilityLabel={joinedOnly ? 'Show all communities' : 'Show joined communities only'}
           onPress={onToggleJoined}
           style={({ pressed }) => [
             styles.chip,

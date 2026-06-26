@@ -50,18 +50,39 @@ function createStyles(colors: ThemeColors) {
   });
 }
 
+function formatPostDate(isoDate: string): string {
+  return new Date(isoDate).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 function PostCardComponent({ post }: PostCardProps) {
   const styles = useThemedStyles(createStyles);
+  const formattedDate = formatPostDate(post.createdAt);
+  const accessibilityLabel = `${post.title}. By ${post.authorName}. ${formattedDate}.${
+    post.isOptimistic ? ' Syncing.' : ''
+  }`;
 
   return (
-    <View style={[styles.card, post.isOptimistic && styles.optimistic]}>
+    <View
+      style={[styles.card, post.isOptimistic && styles.optimistic]}
+      accessible
+      accessibilityRole="summary"
+      accessibilityLabel={accessibilityLabel}
+    >
       <Text style={styles.title}>{post.title}</Text>
       <Text style={styles.body}>{post.body}</Text>
       <View style={styles.footer}>
         <Text style={styles.meta}>{post.authorName}</Text>
-        <Text style={styles.meta}>{new Date(post.createdAt).toLocaleDateString()}</Text>
+        <Text style={styles.meta}>{formattedDate}</Text>
       </View>
-      {post.isOptimistic ? <Text style={styles.syncing}>Syncing...</Text> : null}
+      {post.isOptimistic ? (
+        <Text style={styles.syncing} accessibilityLiveRegion="polite">
+          Syncing...
+        </Text>
+      ) : null}
     </View>
   );
 }
