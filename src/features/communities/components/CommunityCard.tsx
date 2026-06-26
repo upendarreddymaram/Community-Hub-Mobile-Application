@@ -1,4 +1,5 @@
-import React, { memo, useRef, useState } from 'react';
+import React, { memo, useEffect, useRef, useState } from 'react';
+import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import {
   Platform,
   Pressable,
@@ -182,7 +183,9 @@ function CommunityCardComponent({ community, onPress }: CommunityCardProps) {
         </Text>
 
         <View style={styles.footer}>
-          <Text style={styles.meta}>{community.memberCount.toLocaleString()} members</Text>
+          <Text style={styles.meta}>
+            {community.memberCount.toLocaleString()} members
+          </Text>
           <Text style={styles.dot}>·</Text>
           <Text style={styles.meta}>{community.category}</Text>
         </View>
@@ -194,17 +197,15 @@ function CommunityCardComponent({ community, onPress }: CommunityCardProps) {
 export const CommunityCard = memo(CommunityCardComponent);
 
 interface SearchFilterBarProps {
-  search: string;
-  onSearchChange: (value: string) => void;
+  onDebouncedSearchChange: (value: string) => void;
   sort: CommunitySortOption;
   onSortChange: (value: CommunitySortOption) => void;
   joinedOnly: boolean;
   onToggleJoined: () => void;
 }
 
-export function SearchFilterBar({
-  search,
-  onSearchChange,
+function SearchFilterBarComponent({
+  onDebouncedSearchChange,
   sort,
   onSortChange,
   joinedOnly,
@@ -212,6 +213,8 @@ export function SearchFilterBar({
 }: SearchFilterBarProps) {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 300);
   const sortTriggerRef = useRef<ViewType>(null);
   const [sortExpanded, setSortExpanded] = useState(false);
   const [sortAnchor, setSortAnchor] = useState<{
@@ -220,6 +223,10 @@ export function SearchFilterBar({
     width: number;
     height: number;
   } | null>(null);
+
+  useEffect(() => {
+    onDebouncedSearchChange(debouncedSearch);
+  }, [debouncedSearch, onDebouncedSearchChange]);
 
   const activeSortLabel =
     SORT_OPTIONS.find((option) => option.value === sort)?.label ?? 'Members';
@@ -242,8 +249,8 @@ export function SearchFilterBar({
         accessibilityLabel="Search communities"
         placeholder="Search communities"
         placeholderTextColor={colors.textMuted}
-        value={search}
-        onChangeText={onSearchChange}
+        value={searchInput}
+        onChangeText={setSearchInput}
         style={styles.searchInput}
         returnKeyType="search"
       />
@@ -268,7 +275,9 @@ export function SearchFilterBar({
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ selected: joinedOnly }}
-          accessibilityLabel={joinedOnly ? 'Show all communities' : 'Show joined communities only'}
+          accessibilityLabel={
+            joinedOnly ? 'Show all communities' : 'Show joined communities only'
+          }
           onPress={onToggleJoined}
           style={({ pressed }) => [
             styles.chip,
@@ -292,3 +301,5 @@ export function SearchFilterBar({
     </View>
   );
 }
+
+export const SearchFilterBar = memo(SearchFilterBarComponent);

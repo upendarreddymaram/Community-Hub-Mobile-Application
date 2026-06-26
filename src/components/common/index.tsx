@@ -15,7 +15,15 @@ import { spacing, typography } from '../../theme';
 
 export { AppLogo } from './AppLogo';
 export { UserAvatar } from './UserAvatar';
-export { CommunityListSkeleton, CommunityDetailSkeleton, PostListSkeleton, SkeletonBox } from './Skeleton';
+export { SuccessAnimation } from './SuccessAnimation';
+export { ConfirmDialog } from './ConfirmDialog';
+export type { ConfirmDialogProps } from './ConfirmDialog';
+export {
+  CommunityListSkeleton,
+  CommunityDetailSkeleton,
+  PostListSkeleton,
+  SkeletonBox,
+} from './Skeleton';
 
 function createCommonStyles(colors: ThemeColors) {
   return StyleSheet.create({
@@ -80,6 +88,11 @@ function createCommonStyles(colors: ThemeColors) {
     },
     inputWithToggle: {
       paddingRight: spacing.xl + spacing.md,
+    },
+    inputMultiline: {
+      minHeight: 140,
+      textAlignVertical: 'top',
+      paddingTop: spacing.sm + 4,
     },
     toggleButton: {
       position: 'absolute',
@@ -218,7 +231,15 @@ interface InputProps extends TextInputProps {
   showPasswordToggle?: boolean;
 }
 
-export function Input({ label, error, showPasswordToggle, secureTextEntry, ...props }: InputProps) {
+export function Input({
+  label,
+  error,
+  showPasswordToggle,
+  secureTextEntry,
+  style,
+  multiline,
+  ...props
+}: InputProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => createCommonStyles(colors), [colors]);
   const [isSecure, setIsSecure] = React.useState(Boolean(secureTextEntry));
@@ -230,10 +251,13 @@ export function Input({ label, error, showPasswordToggle, secureTextEntry, ...pr
         <TextInput
           accessibilityLabel={label}
           placeholderTextColor={colors.textMuted}
+          multiline={multiline}
           style={[
             styles.input,
-            showPasswordToggle && styles.inputWithToggle,
+            multiline ? styles.inputMultiline : undefined,
+            showPasswordToggle ? styles.inputWithToggle : undefined,
             error ? styles.inputError : undefined,
+            style,
           ]}
           secureTextEntry={showPasswordToggle ? isSecure : secureTextEntry}
           {...props}
@@ -309,20 +333,6 @@ export function ErrorView({
       {onRetry ? (
         <Button label="Try Again" onPress={onRetry} style={styles.emptyAction} />
       ) : null}
-    </View>
-  );
-}
-
-export function OfflineBanner({ pendingActions = 0 }: { pendingActions?: number }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createCommonStyles(colors), [colors]);
-
-  return (
-    <View style={styles.offlineBanner} accessibilityLiveRegion="polite">
-      <Text style={styles.offlineText}>
-        You are offline. Please check your internet connection and try again.
-        {pendingActions > 0 ? ` • ${pendingActions} action(s) queued` : ''}.
-      </Text>
     </View>
   );
 }

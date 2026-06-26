@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useTheme } from '../../providers/ThemeProvider';
 import type { ThemeColors } from '../../theme/colors';
-import { typography } from '../../theme';
 
 interface UserAvatarProps {
   name: string;

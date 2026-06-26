@@ -45,7 +45,8 @@ export function validateLogin(credentials: LoginCredentials): LoginFormErrors {
     } else if (!/[0-9]/.test(password)) {
       errors.password = 'Password must include at least one number';
     } else if (!SPECIAL_CHAR_REGEX.test(password)) {
-      errors.password = 'Password must include at least one special character (!@#$%^&* etc.)';
+      errors.password =
+        'Password must include at least one special character (!@#$%^&* etc.)';
     }
   }
 

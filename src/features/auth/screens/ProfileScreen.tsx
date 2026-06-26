@@ -2,7 +2,9 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, UserAvatar } from '../../../components/common';
+import { Button, OfflineSyncBanner, UserAvatar } from '../../../components/common';
+import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
+import { useOfflineSync } from '../../../hooks/useOfflineSync';
 import { useThemedStyles } from '../../../hooks/useThemedStyles';
 import { useAuthStore } from '../store/authStore';
 import type { MainStackParamList } from '../../../types/navigation';
@@ -114,6 +116,8 @@ export function ProfileScreen(_props: Props) {
   const styles = useThemedStyles(createStyles);
   const session = useAuthStore((state) => state.session);
   const logout = useAuthStore((state) => state.logout);
+  const { isOnline } = useNetworkStatus();
+  const { pendingCount, isSyncing, syncError, retrySync } = useOfflineSync();
 
   if (!session) {
     return null;
@@ -123,6 +127,13 @@ export function ProfileScreen(_props: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      <OfflineSyncBanner
+        isOnline={isOnline}
+        pendingActions={pendingCount}
+        isSyncing={isSyncing}
+        syncError={syncError}
+        onRetrySync={retrySync}
+      />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}

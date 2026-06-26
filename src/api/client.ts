@@ -1,9 +1,6 @@
 import { API_CONFIG } from '../utils/constants';
 import { logApiFailure, logApiStart, logApiSuccess } from '../utils/apiLogger';
-import {
-  handleUnauthorizedResponse,
-  resolveAuthHeaders,
-} from './authInterceptor';
+import { handleUnauthorizedResponse, resolveAuthHeaders } from './authInterceptor';
 
 export class ApiError extends Error {
   constructor(

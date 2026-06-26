@@ -1,59 +1,74 @@
 # Community Hub Mobile Application
 
-A production-oriented React Native application for browsing, joining, and participating in online communities. Built as a senior-level engineering assignment with emphasis on architecture, offline resilience, and maintainability.
+A production-oriented React Native application for browsing, joining, and participating in online communities. The app loads **live community and post data** from the public Discourse Meta API, combines it with **local membership and user-authored posts**, and is designed for **offline resilience**, **clear architecture**, and **maintainability**.
+
+---
 
 ## Setup Instructions
 
 ### Prerequisites
 
-- Node.js 22+
-- npm 10+
-- Android Studio (Android emulator/device)
-- Xcode + CocoaPods (iOS simulator, macOS only)
+| Requirement | Version |
+|-------------|---------|
+| Node.js | 22+ |
+| npm | 10+ |
+| Android Studio | For Android emulator or device |
+| Xcode + CocoaPods | macOS only, for iOS simulator |
 
 ### Installation
 
 ```bash
+git clone <https://github.com/upendarreddymaram/Community-Hub-Mobile-Application.git>
 cd community_app
 npm install
 
-# iOS only (first time)
+# iOS only (first time or after native dependency changes)
 cd ios && pod install && cd ..
 ```
 
 ### Running the Application
 
+Use two terminals:
+
 ```bash
-# Start Metro bundler (terminal 1)
+# Terminal 1 — Metro bundler
 npm start
 
-# Run on Android (terminal 2)
-npm run android
+# Terminal 2 — run on a device or emulator
+npm run android    # Android
+npm run ios        # iOS (macOS only)
+```
 
-# Run on iOS (terminal 2, macOS only)
-npm run ios
+If Metro serves stale bundles after dependency changes:
+
+```bash
+npm start -- --reset-cache
 ```
 
 ### Environment Configuration
 
 No external API keys are required for the default setup.
 
-Copy the example env file if you want to override the Discourse host:
+Configuration lives in **`src/config/env.ts`**. React Native does not load `.env` at runtime in this project; `.env.example` documents the variable names for reference only.
 
 ```bash
-cp .env.example .env
+cp .env.example .env   # optional reference
 ```
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DISCOURSE_BASE_URL` | `https://meta.discourse.org` | Live read API for communities & posts |
+| `DISCOURSE_BASE_URL` | `https://meta.discourse.org` | Base URL for live read API (communities & posts) |
 | `USER_AGENT` | `CommunityHubApp/1.0 (...)` | Identifies the app to Discourse |
 
-- **Authentication** uses a mocked local login flow (demo credentials below).
-- **Communities & posts** are loaded live from the public [Discourse Meta forum API](https://meta.discourse.org/site.json).
-- **Join/leave** and **create post** are stored locally on-device — see [Why writes are local-only](#why-writes-are-local-only) below.
+To point at a different Discourse instance, edit `src/config/env.ts` and rebuild.
 
-Optional demo credentials (pre-filled on login screen):
+**Data sources at a glance:**
+
+- **Authentication** — mocked local login (no external auth service).
+- **Communities & posts (reads)** — live from the public [Discourse Meta API](https://meta.discourse.org/site.json).
+- **Join/leave & user-created posts (writes)** — stored locally on-device with offline queue support. See [Why writes are local-only](#why-writes-are-local-only).
+
+**Demo credentials** (use “Fill demo credentials” on the login screen):
 
 | Email | Password |
 |-------|----------|
@@ -63,11 +78,30 @@ Optional demo credentials (pre-filled on login screen):
 ### Quality Scripts
 
 ```bash
-npm run typecheck   # TypeScript validation
-npm run lint        # ESLint
+npm run typecheck   # TypeScript (strict)
+npm run lint        # ESLint + Prettier rules
 npm run lint:fix    # Auto-fix lint issues
-npm run format      # Prettier formatting
+npm run format      # Prettier write
+npm test            # Jest unit + integration tests
+npm run test:ci     # CI-friendly test run (used in GitHub Actions)
 ```
+
+### Testing
+
+```bash
+npm test
+```
+
+| Suite | Coverage |
+|-------|----------|
+| `__tests__/utils/*` | Validation, HTML strip, community sort, analytics helper |
+| `__tests__/api/discourseApi.test.ts` | Discourse → app model mappers |
+| `__tests__/api/discourseApi.integration.test.ts` | Fetch layer with MSW |
+| `__tests__/api/communitiesApi.offline.test.ts` | Offline list fallback |
+| `__tests__/store/offlineQueueStore.test.ts` | Offline queue rules |
+| `__tests__/App.test.tsx` | App smoke render |
+
+CI (`.github/workflows/ci.yml`) runs **lint**, **typecheck**, and **test** on every push/PR to `main`.
 
 ---
 
@@ -75,85 +109,145 @@ npm run format      # Prettier formatting
 
 ### Project Structure
 
+Feature-based layout keeps screens, hooks, API, and UI colocated per domain. Shared infrastructure sits at the root of `src/`.
+
 ```
 community_app/
-├── android/              # Native Android project
-├── ios/                  # Native iOS project
+├── android/                    # Native Android project
+├── ios/                        # Native iOS project
+├── __tests__/                  # Jest unit & integration tests
 ├── src/
-│   ├── api/              # Shared HTTP client, Discourse API, auth interceptor
-│   ├── features/         # Feature modules (auth, communities, posts)
-│   │   ├── auth/         # Login, profile, auth store, secure token
-│   │   ├── communities/  # List, detail, join state, community UI
-│   │   └── posts/        # Post list, create post, local post storage
-│   ├── components/       # Shared UI (common)
-│   ├── hooks/            # Cross-cutting hooks (network, themed styles)
-│   ├── navigation/       # Auth / Main / Root navigators
-│   ├── providers/        # App-level providers (Query, theme, API auth)
-│   ├── store/            # Cross-cutting stores (offline queue)
-│   ├── theme/            # Colors, spacing, typography tokens
-│   ├── types/            # Shared TypeScript models
-│   └── utils/            # Validation, storage helpers, constants
-├── App.tsx
+│   ├── api/                    # HTTP client, Discourse API, auth interceptor
+│   ├── config/                 # Runtime env (Discourse URL, user agent)
+│   ├── features/
+│   │   ├── auth/               # Login, profile, auth store, auth API
+│   │   ├── communities/        # List, detail, join/leave, community UI
+│   │   └── posts/              # Post list, create/edit, local post storage
+│   ├── components/common/      # Shared UI (Button, Input, dialogs, skeletons)
+│   ├── hooks/                  # Cross-cutting hooks (network, offline sync, layout)
+│   ├── navigation/             # Root / Auth / Main stacks, navigation ref
+│   ├── providers/              # Query client, theme, API auth bootstrap
+│   ├── store/                  # Offline action queue (Zustand)
+│   ├── theme/                  # Colors, spacing, typography
+│   ├── types/                  # Shared TypeScript models & navigation types
+│   └── utils/                  # Validation, storage, analytics, constants
+├── App.tsx                     # Entry — mounts AppProviders
 └── README.md
 ```
 
+**Layering convention:**
+
+| Layer | Responsibility |
+|-------|----------------|
+| **Screens** | Compose UI, wire navigation, delegate to hooks |
+| **Hooks** | React Query / Zustand; expose loading, error, mutation state |
+| **API services** | HTTP calls, local persistence, Discourse mapping |
+| **Components** | Presentational, memoized where lists are involved |
+
 ### State Management Approach
 
-**Primary: TanStack React Query** — server/async state (communities, posts, pagination, caching, optimistic updates)
+| Concern | Tool | Used for |
+|---------|------|----------|
+| **Server/async state** | TanStack React Query v5 | Communities, posts, pagination, cache, optimistic mutations |
+| **Auth session** | Zustand + AsyncStorage + Keychain | Login state, token (encrypted), profile |
+| **Joined communities** | Zustand + AsyncStorage | Local membership flags merged into API data |
+| **Offline write queue** | Zustand + AsyncStorage | Join, leave, create-post actions when offline |
+| **UI theme** | React Context (`ThemeProvider`) | System light/dark colors |
 
-**Secondary: Zustand** — auth session, joined communities, offline action queue
+**Why not Redux or Context-only?**
 
-**Secure storage:** Auth token in Keychain; user profile in AsyncStorage
-
-#### Why this combination?
-
-| Concern | Tool | Rationale |
-|---------|------|-----------|
-| Paginated lists, caching, refetch | React Query | Built-in stale-while-revalidate, infinite queries, cache invalidation |
-| Optimistic join/leave & post creation | React Query mutations | `onMutate` / rollback patterns are first-class |
-| Offline cache persistence | React Query + AsyncStorage persister | Survives app restarts with minimal custom code |
-| Auth session | Zustand + AsyncStorage | Simple synchronous reads after hydration; no over-fetching |
-| Offline action queue | Zustand + AsyncStorage | Small, predictable queue independent of query cache |
-
-Redux Toolkit would add boilerplate for mostly server-driven state. Context API alone would not scale cleanly for pagination + cache invalidation.
+- Most state is **server-driven** with pagination, stale-while-revalidate, and invalidation — React Query handles this with less boilerplate than Redux Toolkit.
+- Auth and the offline queue are **small, synchronous-after-hydration** slices — Zustand is sufficient without global re-render cost of Context.
+- Context alone would require custom cache, pagination, and persistence logic that React Query already provides.
 
 ### Data Flow
 
 ```
-Screen → Custom Hook → React Query / Zustand → API Service → Discourse Meta API (+ local storage)
-                ↓
-         AsyncStorage (cache, session, drafts, offline queue)
-                ↓
-         NetInfo (connectivity) → Offline banner + queue sync
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────────┐
+│   Screen    │ ──▶ │ Custom Hook  │ ──▶ │ API Service │ ──▶ │ Discourse API    │
+│             │     │ (React Query │     │             │     │ (reads)          │
+│             │     │  / Zustand)  │     │             │     └──────────────────┘
+└─────────────┘     └──────────────┘     └──────┬──────┘
+       ▲                    ▲                   │
+       │                    │                   ▼
+       │                    │            ┌──────────────────┐
+       │                    └────────────│ AsyncStorage /   │
+       │                                 │ Keychain         │
+       └─────────────────────────────────│ (cache, drafts,  │
+                                         │  queue, session) │
+                                         └──────────────────┘
+                                                ▲
+                                         ┌──────┴──────┐
+                                         │   NetInfo   │
+                                         │ (connectivity)
+                                         └─────────────┘
 ```
 
-1. **Auth**: Login validates locally → mock API returns token → stored in AsyncStorage → Root navigator switches to Main flow on hydration.
-2. **Communities**: Fetched live from Discourse `/site.json` categories; join/leave state merged from local AsyncStorage.
-3. **Community Details**: Posts loaded from Discourse `/c/{slug}/{id}.json`; user-created posts appended from local storage.
-4. **Mutations**: Join/leave and create-post use optimistic updates with rollback on failure, offline queue, and sync retry UI.
-5. **Offline**: React Query persister caches successful responses; join/leave/create-post actions enqueue when offline and sync via `useOfflineSync` when connectivity returns.
+**Flows in detail:**
+
+1. **Auth** — Login validates locally → mock API returns token → token stored in Keychain, profile in AsyncStorage → `RootNavigator` gates Auth vs Main flow after hydration.
+2. **Communities** — Infinite query fetches Discourse categories; search/sort/joined filters applied client-side; join state merged from local store.
+3. **Community detail** — Detail query + infinite posts query; local user posts prepended; join/leave via optimistic mutations.
+4. **Create / edit post** — Optimistic list update, draft auto-save, offline enqueue when disconnected.
+5. **Navigation** — Typed native stacks; session change resets navigation stack to prevent stale routes after logout.
 
 ### Offline Strategy
 
-- **Detection**: `@react-native-community/netinfo` drives offline banner UI
-- **Read cache**: TanStack Query persisted to AsyncStorage (24h max age)
-- **Write queue**: Join/leave and create-post actions stored in Zustand offline queue when offline
-- **Sync on reconnect**: Queue processed sequentially with visible sync/retry banner; caches invalidated on success
-- **Draft persistence**: Unsent post title/body auto-saved to AsyncStorage (debounced 500ms)
-- **Graceful degradation**: Cached data shown with banner; API failures surface retry UI instead of crashes
+| Mechanism | Implementation |
+|-----------|----------------|
+| **Connectivity detection** | `@react-native-community/netinfo` via `useNetworkStatus` |
+| **Read cache** | React Query + AsyncStorage persister (24h `maxAge`, `networkMode: 'offlineFirst'`) |
+| **List snapshot fallback** | `communitiesSnapshot` utility when query cache is empty offline |
+| **Write queue** | Zustand store persists join / leave / create-post actions |
+| **Sync on reconnect** | `useOfflineSync` processes queue sequentially; invalidates affected queries |
+| **Optimistic UI** | Mutations update cache immediately; rollback on failure when online |
+| **Draft persistence** | Post title/body debounced to AsyncStorage (500ms) |
+| **User feedback** | `OfflineSyncBanner` on list, detail, profile; inline `ErrorView` with retry |
+| **Cache restore gate** | `useIsRestoring()` blocks queries until persisted cache is hydrated |
+
+Offline join/leave skips network calls, updates local caches fully, and does not surface error UI — actions queue silently until sync.
 
 ---
 
 ## Key Decisions & Tradeoffs
 
-| Decision | Choice | Tradeoff |
-|----------|--------|----------|
-| Framework | React Native CLI 0.86 | Full native project control; standard for production Android/iOS builds |
-| API | Discourse Meta public API (reads) + local persistence (writes) | Real network data; join/post not synced to Discourse — intentional (see below) |
-| Navigation | React Navigation native stack | Simple stack fits scope; tab navigation omitted intentionally |
-| List performance | FlashList with memoized cards, infinite scroll, debounced search | Client-side filter on ~45 categories; server-side search if catalog grows |
-| Error handling | ErrorBoundary + per-screen ErrorView | Boundary catches render errors; query errors handled inline with retry |
-| Secure token | Keychain via `react-native-keychain` | Token encrypted at rest; profile JSON in AsyncStorage |
+### Major Architectural Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| **Framework** | React Native CLI 0.86 | Full native project control; standard path to Play Store / App Store builds |
+| **Feature folders** | `src/features/{auth,communities,posts}` | Scales by domain; keeps related code discoverable |
+| **Navigation** | React Navigation 7 native stack | Typed params, session-based flow reset, minimal complexity for assignment scope |
+| **List rendering** | Shopify FlashList | Better recycling vs FlatList for community and post feeds |
+| **API reads** | Discourse Meta public API | Real network data without hosting a backend |
+| **API writes** | Local persistence + queue | Discourse writes require authenticated API keys (see below) |
+| **Error containment** | Root + screen-level `ErrorBoundary` | Render crashes isolated; query errors use inline retry UI |
+
+### Library Choices
+
+| Library | Role |
+|---------|------|
+| `@tanstack/react-query` | Server state, infinite queries, mutations, cache |
+| `@tanstack/react-query-persist-client` | Offline read cache across app restarts |
+| `zustand` | Auth, joined communities, offline queue |
+| `@react-navigation/native` | Navigation and screen tracking hook point |
+| `@shopify/flash-list` | High-performance lists |
+| `@react-native-async-storage/async-storage` | JSON cache, drafts, queue |
+| `react-native-keychain` | Encrypted auth token storage |
+| `@react-native-community/netinfo` | Online/offline detection |
+| `eslint` + `prettier` | Lint and format (flat ESLint config) |
+| `jest` + `msw` | Unit tests and API integration tests |
+
+### Tradeoffs Made During Implementation
+
+| Area | Tradeoff |
+|------|----------|
+| **Discourse writes** | Local-only membership and posts instead of provisioning Discourse API keys — prioritizes offline UX and architecture clarity over full backend sync |
+| **Client-side search/filter** | ~45 Discourse categories filtered in-app — simple and fast today; would move to server-side search at scale |
+| **No tab navigator** | Single stack per flow — fewer navigation edge cases; profile accessed from list header avatar |
+| **Mutation invalidation** | Post mutations invalidate on settle — extra refetch cost in exchange for consistent cache after sync |
+| **Analytics** | Thin `analytics.ts` abstraction with dev console logging — swappable for Firebase/Amplitude without SDK lock-in today |
+| **No E2E (Detox)** | Jest + MSW covers logic and API mapping; E2E deferred due to emulator CI cost |
 
 ### Why writes are local-only
 
@@ -162,44 +256,96 @@ Discourse **read** endpoints (`/site.json`, `/c/{slug}/{id}.json`) are public. *
 This app deliberately:
 
 1. Loads **real live data** from Discourse Meta for communities and posts.
-2. Persists **join/leave** and **user-created posts** locally with offline queue + optimistic UI.
-3. Documents the boundary clearly so evaluators can judge offline resilience and architecture separately from Discourse admin setup.
+2. Persists **join/leave** and **user-created posts** locally with offline queue and optimistic UI.
+3. Documents the boundary so offline resilience and architecture can be evaluated separately from Discourse admin setup.
 
-For production, swap `communitiesApi.joinCommunity` / `postsApi.createPost` with authenticated Discourse POST endpoints behind the same React Query mutation layer.
+For production, replace `communitiesApi.joinCommunity` / `postsApi.createPost` implementations with authenticated Discourse POST endpoints behind the same React Query mutation layer.
 
 ### Assumptions
 
-- Auth is local/mock; communities and posts are read from Discourse Meta (requires network)
-- Join/leave and user-created posts are stored locally only
-- Single user session per device
-- Post drafts auto-saved to AsyncStorage
+- **Auth** is mock/local; no OAuth or external identity provider.
+- **Communities and posts (reads)** require network at least once to populate cache; cached data shown when offline afterward.
+- **Join/leave and user posts** are device-local and not synced to Discourse.
+- **Single user session** per device; no multi-account switching.
+- **Post drafts** auto-save locally; clearing app data clears drafts and queue.
+- **System theme** follows device light/dark mode; no in-app theme toggle.
+- **Discourse Meta** remains reachable and its public API shape is stable.
 
 ---
 
 ## Features Implemented
 
-- [x] Mock authentication with validation & session persistence
+- [x] Mock authentication with validation and session persistence (Keychain token)
 - [x] Live community list from Discourse API with search, sort, and joined filter
-- [x] Community details with stats, posts, join/leave (optimistic + retry)
-- [x] Create post with validation, optimistic UI, duplicate-submit guard
+- [x] Community detail with stats, posts, join/leave (optimistic + retry)
+- [x] Create and edit local posts with validation and duplicate-submit guard
+- [x] Delete local posts with confirmation dialog and animation
 - [x] Post draft auto-save across reloads
-- [x] Offline detection, cached data, queued membership and post actions with sync retry UI
+- [x] Offline detection, cached reads, queued writes, sync retry UI
 - [x] Loading, empty, and error states throughout
-- [x] ESLint + Prettier configured
-- [x] Error boundary (bonus)
-- [x] Accessibility labels on interactive elements (login, list, posts, detail actions)
-- [x] Skeleton loading states on community list and detail
-- [x] Tablet-friendly centered layout (max 720px content width)
+- [x] System dark mode (follows device theme)
+- [x] FlashList with memoized cards and debounced search (isolated from list re-renders)
+- [x] Unit and integration tests; GitHub Actions CI
+- [x] ESLint + Prettier
+- [x] Error boundaries (app root + community detail)
+- [x] Accessibility labels on primary interactive elements
+- [x] Skeleton loading states
+- [x] Tablet-friendly centered layout (max 720px)
+- [x] Minimal analytics (`trackScreen` / `trackEvent`) with dev logging
+
+---
+
+## Evaluation Criteria
+
+How this submission maps to the stated evaluation areas:
+
+| Criterion | How it is addressed |
+|-----------|---------------------|
+| **Architecture and scalability** | Feature-based modules, clear screen → hook → API layering, typed navigation, swappable analytics and API sinks |
+| **State management quality** | React Query for async/server state; Zustand for small client slices; narrow selectors; optimistic mutations with rollback |
+| **API integration patterns** | Centralized HTTP client + auth interceptor; Discourse mappers isolated in `discourseApi.ts`; MSW integration tests |
+| **Offline and error handling** | Persisted query cache, write queue, sync hook, snapshot fallback, banners, ErrorBoundary, inline retry |
+| **Performance awareness** | FlashList, `React.memo` on list items, debounced search isolated from list, `useCallback`/`useMemo`, skeleton loaders |
+| **Code readability and maintainability** | Strict TypeScript, ESLint/Prettier, extracted components (`PostForm`, detail subcomponents), no dead code |
+| **User experience quality** | Optimistic updates, success/delete animations, confirm dialogs, offline banners, pull-to-refresh, infinite scroll |
+| **Technical decision-making** | Documented tradeoffs (local writes, library choices); assumptions stated explicitly |
+| **Overall production readiness** | CI pipeline, secure token storage, error boundaries, env config, README, test coverage for critical paths |
 
 ---
 
 ## Future Improvements
 
-- **Testing**: Unit tests for validation/utils; integration tests with MSW; Detox E2E
-- **CI/CD**: GitHub Actions for lint, typecheck, and EAS Build
-- **Real API writes**: Authenticated Discourse API for join/post sync
-- **Analytics**: Screen and mutation event tracking
-- **Advanced offline**: Background sync with conflict resolution
+With additional time, priority extensions would be:
+
+1. **E2E tests (Detox)** — Login → browse → join → create post on real emulators
+2. **Authenticated Discourse writes** — Replace local-only mutations with real API sync
+3. **Production analytics** — Plug Firebase Analytics or Amplitude into `setAnalyticsSink()`
+4. **Crash reporting** — Sentry for production error monitoring (separate from analytics)
+5. **Component tests** — React Testing Library for `PostForm`, `CommunityCard`, navigation flows
+6. **Accessibility audit** — Screen reader pass on Profile, empty/error states, live regions for form errors
+7. **Background sync** — Process offline queue with conflict resolution when app is backgrounded
+8. **EAS Build / native CI** — Automated signed builds in GitHub Actions
+
+---
+
+## Submission Notes
+
+This submission prioritizes a **clean, reliable, and thoughtfully engineered** mobile client over feature breadth.
+
+**What evaluators should focus on:**
+
+- Navigate **Communities → Detail → Create Post** while online, then toggle airplane mode to observe cached reads and queued writes.
+- Use demo credentials on the login screen; sign out from Profile to verify navigation reset.
+- Run `npm run lint`, `npm run typecheck`, and `npm run test:ci` to verify quality gates.
+- In dev, watch Metro logs for `[Analytics]` screen and event lines.
+
+**Known limitations (by design):**
+
+- User-created posts and membership are **not visible to other Discourse users**.
+- First offline launch before any successful fetch shows an empty-state message with retry.
+- E2E and production analytics SDKs are intentionally out of scope.
+
+**Focus delivered:** architecture clarity, offline resilience, performance-conscious lists, typed and tested core logic, and documentation of every major assumption.
 
 ---
 

@@ -1,5 +1,14 @@
-import type { CommunitiesResponse, Community, CommunityFilters } from '../../../types/community';
+import type {
+  CommunitiesResponse,
+  Community,
+  CommunityFilters,
+} from '../../../types/community';
+import { ApiError } from '../../../api/client';
 import { discourseApi } from '../../../api/discourseApi';
+import {
+  getCommunitiesPageFromSnapshot,
+  getCommunityFromSnapshot,
+} from '../../../utils/communitiesSnapshot';
 import {
   ensureJoinedCommunitiesHydrated,
   useJoinedCommunitiesStore,
@@ -11,12 +20,32 @@ export const communitiesApi = {
     filters: CommunityFilters,
   ): Promise<CommunitiesResponse> => {
     const joinedIds = await ensureJoinedCommunitiesHydrated();
-    return discourseApi.getCommunitiesPage(page, filters, joinedIds);
+
+    try {
+      return await discourseApi.getCommunitiesPage(page, filters, joinedIds);
+    } catch (error) {
+      const snapshotPage = await getCommunitiesPageFromSnapshot(page, filters, joinedIds);
+      if (snapshotPage) {
+        return snapshotPage;
+      }
+      throw error;
+    }
   },
 
   getCommunityById: async (id: string): Promise<Community> => {
     const joinedIds = await ensureJoinedCommunitiesHydrated();
-    return discourseApi.getCommunityById(id, joinedIds);
+
+    try {
+      return await discourseApi.getCommunityById(id, joinedIds);
+    } catch (error) {
+      const snapshotCommunity = await getCommunityFromSnapshot(id, joinedIds);
+      if (snapshotCommunity) {
+        return snapshotCommunity;
+      }
+      throw error instanceof ApiError
+        ? error
+        : new ApiError('Community not available offline', 503);
+    }
   },
 
   joinCommunity: async (id: string): Promise<Community> => {

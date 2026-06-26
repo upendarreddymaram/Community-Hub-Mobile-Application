@@ -1,8 +1,17 @@
 import { create } from 'zustand';
-import type { AuthSession, LoginCredentials, PersistedAuthProfile } from '../../../types/auth';
+import type {
+  AuthSession,
+  LoginCredentials,
+  PersistedAuthProfile,
+} from '../../../types/auth';
 import { STORAGE_KEYS } from '../../../utils/constants';
-import { clearAuthToken, getAuthToken, saveAuthToken } from '../../../utils/secureStorage';
+import {
+  clearAuthToken,
+  getAuthToken,
+  saveAuthToken,
+} from '../../../utils/secureStorage';
 import { getJsonItem, removeItem, setJsonItem } from '../../../utils/storage';
+import { trackEvent } from '../../../utils/analytics';
 import { authApi } from '../api/authApi';
 
 interface AuthState {
@@ -59,6 +68,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         saveAuthToken(session.token),
       ]);
       set({ session, isLoading: false });
+      trackEvent('login_success');
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed';
@@ -70,6 +80,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     await Promise.all([removeItem(STORAGE_KEYS.AUTH_SESSION), clearAuthToken()]);
     set({ session: null, error: null });
+    trackEvent('logout');
   },
 
   clearError: () => set({ error: null }),

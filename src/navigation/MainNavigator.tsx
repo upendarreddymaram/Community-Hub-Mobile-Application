@@ -1,9 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import {
-  CommunityDetailScreen,
-  CommunityListScreen,
-} from '../features/communities';
+import { CommunityDetailScreen, CommunityListScreen } from '../features/communities';
 import { CreatePostScreen } from '../features/posts';
 import { ProfileScreen } from '../features/auth';
 import type { MainStackParamList } from '../types/navigation';
@@ -21,28 +18,34 @@ export function MainNavigator() {
         headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '600', color: colors.text },
         headerShadowVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
+        headerBackTitle: '',
         contentStyle: { backgroundColor: colors.background },
       }}
     >
       <Stack.Screen
         name="CommunityList"
         component={CommunityListScreen}
-        options={{ headerShown: false }}
+        options={{
+          headerShown: false,
+          title: 'Communities',
+          headerBackTitle: '',
+        }}
       />
       <Stack.Screen
         name="CommunityDetail"
         component={CommunityDetailScreen}
-        options={{ title: 'Community' }}
+        options={{ title: 'Community', headerBackTitle: '' }}
       />
       <Stack.Screen
         name="CreatePost"
         component={CreatePostScreen}
-        options={{ title: 'New Post' }}
+        options={{ title: 'New Post', headerBackTitle: '' }}
       />
       <Stack.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ title: 'Account' }}
+        options={{ title: 'Account', headerBackTitle: '' }}
       />
     </Stack.Navigator>
   );

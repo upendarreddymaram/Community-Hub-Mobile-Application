@@ -1,4 +1,12 @@
-import type { CreatePostPayload, Post, PostDraft, PostsPageResponse } from '../../../types/post';
+import type {
+  CreatePostPayload,
+  Post,
+  PostDraft,
+  PostsPageResponse,
+  UpdatePostPayload,
+} from '../../../types/post';
+import { ApiError } from '../../../api/client';
+import { isLocalPost } from '../../../utils/postHelpers';
 import type { CreatePostOfflinePayload, OfflineAction } from '../../../types/navigation';
 import { STORAGE_KEYS } from '../../../utils/constants';
 import { getJsonItem, removeItem, setJsonItem } from '../../../utils/storage';
@@ -41,35 +49,55 @@ function mergePosts(livePosts: Post[], localPosts: Post[]): Post[] {
 
 export const postsApi = {
   getPostsPage: async (communityId: string, page: number): Promise<PostsPageResponse> => {
-    const livePage = await discourseApi.getTopicsPage(communityId, page);
+    try {
+      const livePage = await discourseApi.getTopicsPage(communityId, page);
 
-    if (page === 1) {
-      const localPosts = await getLocalPosts(communityId);
-      const merged = mergePosts(livePage.data, localPosts);
+      if (page === 1) {
+        const localPosts = await getLocalPosts(communityId);
+        const merged = mergePosts(livePage.data, localPosts);
 
-      logApiInfo('Posts page merged for community', {
+        logApiInfo('Posts page merged for community', {
+          communityId,
+          page,
+          liveCount: livePage.data.length,
+          localCount: localPosts.length,
+          totalCount: merged.length,
+          hasMore: livePage.hasMore,
+        });
+
+        return {
+          ...livePage,
+          data: merged,
+        };
+      }
+
+      logApiInfo('Posts page loaded for community', {
         communityId,
         page,
         liveCount: livePage.data.length,
-        localCount: localPosts.length,
-        totalCount: merged.length,
         hasMore: livePage.hasMore,
       });
 
-      return {
-        ...livePage,
-        data: merged,
-      };
+      return livePage;
+    } catch (error) {
+      const localPosts = await getLocalPosts(communityId);
+
+      if (page === 1 && localPosts.length > 0) {
+        logApiInfo('Posts page served from local storage while offline', {
+          communityId,
+          page,
+          localCount: localPosts.length,
+        });
+
+        return {
+          data: localPosts,
+          page: 1,
+          hasMore: false,
+        };
+      }
+
+      throw error;
     }
-
-    logApiInfo('Posts page loaded for community', {
-      communityId,
-      page,
-      liveCount: livePage.data.length,
-      hasMore: livePage.hasMore,
-    });
-
-    return livePage;
   },
 
   createPostLocal: async (
@@ -84,6 +112,7 @@ export const postsApi = {
       body: payload.body.trim(),
       authorName,
       createdAt: new Date().toISOString(),
+      isLocal: true,
     };
 
     const existing = await getLocalPosts(payload.communityId);
@@ -95,6 +124,54 @@ export const postsApi = {
 
   createPost: async (payload: CreatePostPayload, authorName: string): Promise<Post> => {
     return postsApi.createPostLocal(payload, authorName);
+  },
+
+  getLocalPostById: async (communityId: string, postId: string): Promise<Post> => {
+    const posts = await getLocalPosts(communityId);
+    const post = posts.find((item) => item.id === postId);
+
+    if (!post || !isLocalPost(post)) {
+      throw new ApiError('Post not found or cannot be edited', 404);
+    }
+
+    return post;
+  },
+
+  updatePost: async (payload: UpdatePostPayload): Promise<Post> => {
+    const existing = await getLocalPosts(payload.communityId);
+    const index = existing.findIndex((item) => item.id === payload.postId);
+
+    if (index === -1 || !isLocalPost(existing[index]!)) {
+      throw new ApiError('Post not found or cannot be edited', 404);
+    }
+
+    const updated: Post = {
+      ...existing[index]!,
+      title: payload.title.trim(),
+      body: payload.body.trim(),
+      updatedAt: new Date().toISOString(),
+      isLocal: true,
+    };
+
+    const next = [...existing];
+    next[index] = updated;
+    await setLocalPosts(payload.communityId, next);
+
+    return updated;
+  },
+
+  deletePost: async (communityId: string, postId: string): Promise<void> => {
+    const existing = await getLocalPosts(communityId);
+    const post = existing.find((item) => item.id === postId);
+
+    if (!post || !isLocalPost(post)) {
+      throw new ApiError('Post not found or cannot be deleted', 404);
+    }
+
+    await setLocalPosts(
+      communityId,
+      existing.filter((item) => item.id !== postId),
+    );
   },
 
   syncQueuedPost: async (action: OfflineAction): Promise<void> => {

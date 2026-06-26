@@ -66,7 +66,11 @@ export function SortDropdown({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close sort menu" />
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityLabel="Close sort menu"
+        />
         <View
           style={[
             styles.dropdown,

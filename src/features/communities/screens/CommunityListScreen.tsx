@@ -3,10 +3,7 @@ import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import {
-  CommunityCard,
-  SearchFilterBar,
-} from '../components/CommunityCard';
+import { CommunityCard, SearchFilterBar } from '../components/CommunityCard';
 import {
   CommunityListSkeleton,
   EmptyView,
@@ -15,7 +12,6 @@ import {
   UserAvatar,
 } from '../../../components/common';
 import { useCommunities } from '../hooks/useCommunities';
-import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { useOfflineSync } from '../../../hooks/useOfflineSync';
 import { useResponsiveLayout } from '../../../hooks/useResponsiveLayout';
@@ -89,18 +85,18 @@ export function CommunityListScreen({ navigation }: Props) {
   const styles = useThemedStyles(createStyles);
   const { contentContainerStyle, isWide } = useResponsiveLayout();
   const userName = useAuthStore((state) => state.session?.user.name ?? 'Guest');
-  const { isOnline } = useNetworkStatus();
+  const { isOnline, isInitialized } = useNetworkStatus();
   const { pendingCount, isSyncing, syncError, retrySync } = useOfflineSync();
   const insets = useSafeAreaInsets();
 
-  const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebouncedValue(searchInput, 300);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [clearSearchToken, setClearSearchToken] = useState(0);
   const [sort, setSort] = useState<CommunitySortOption>('members');
   const [joinedOnly, setJoinedOnly] = useState(false);
 
   const filters = useMemo(
-    () => ({ search: debouncedSearch, sort, joinedOnly }),
-    [debouncedSearch, sort, joinedOnly],
+    () => ({ search: searchQuery, sort, joinedOnly }),
+    [searchQuery, sort, joinedOnly],
   );
 
   const {
@@ -121,6 +117,20 @@ export function CommunityListScreen({ navigation }: Props) {
   );
 
   const listBottomPadding = insets.bottom + spacing.lg;
+
+  const handleDebouncedSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+  }, []);
+
+  const handleToggleJoined = useCallback(() => {
+    setJoinedOnly((value) => !value);
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setSearchQuery('');
+    setJoinedOnly(false);
+    setClearSearchToken((token) => token + 1);
+  }, []);
 
   const handleCommunityPress = useCallback(
     (community: Community) => {
@@ -144,21 +154,13 @@ export function CommunityListScreen({ navigation }: Props) {
 
   const keyExtractor = useCallback((item: Community) => item.id, []);
 
-  const listHeader = useMemo(
-    () => (
-      <SearchFilterBar
-        search={searchInput}
-        onSearchChange={setSearchInput}
-        sort={sort}
-        onSortChange={setSort}
-        joinedOnly={joinedOnly}
-        onToggleJoined={() => setJoinedOnly((value) => !value)}
-      />
-    ),
-    [searchInput, sort, joinedOnly],
+  const listFooter = useMemo(
+    () =>
+      isFetchingNextPage ? <Text style={styles.footerText}>Loading more...</Text> : null,
+    [isFetchingNextPage, styles.footerText],
   );
 
-  if (isLoading && !data) {
+  if ((isLoading || !isInitialized) && !data) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={[styles.topBar, isWide && styles.topBarWide]}>
@@ -189,56 +191,64 @@ export function CommunityListScreen({ navigation }: Props) {
           </Text>
           <Text style={styles.screenSubtitle}>Hi, {getFirstName(userName)}</Text>
         </View>
-        <UserAvatar
-          name={userName}
-          onPress={() => navigation.navigate('Profile')}
-        />
+        <UserAvatar name={userName} onPress={() => navigation.navigate('Profile')} />
       </View>
 
       {isError && !data ? (
         <ErrorView
-          message={error instanceof Error ? error.message : 'Failed to load communities'}
+          message={
+            !isOnline
+              ? 'You are offline and no cached communities are available yet. Connect once while online to cache the list.'
+              : error instanceof Error
+                ? error.message
+                : 'Failed to load communities'
+          }
           onRetry={() => void refetch()}
         />
       ) : (
-        <FlashList
-          data={communities}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          ListHeaderComponent={listHeader}
-          contentContainerStyle={[
-            communities.length === 0 ? styles.emptyList : styles.listContent,
-            { paddingBottom: listBottomPadding },
-            contentContainerStyle,
-          ]}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={() => void refetch()}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
+        <>
+          <View style={contentContainerStyle}>
+            <SearchFilterBar
+              key={clearSearchToken}
+              onDebouncedSearchChange={handleDebouncedSearchChange}
+              sort={sort}
+              onSortChange={setSort}
+              joinedOnly={joinedOnly}
+              onToggleJoined={handleToggleJoined}
             />
-          }
-          onEndReached={handleEndReached}
-          onEndReachedThreshold={0.4}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <EmptyView
-              title="No communities found"
-              message="Try adjusting your search or filters."
-              actionLabel="Clear filters"
-              onAction={() => {
-                setSearchInput('');
-                setJoinedOnly(false);
-              }}
-            />
-          }
-          ListFooterComponent={
-            isFetchingNextPage ? (
-              <Text style={styles.footerText}>Loading more...</Text>
-            ) : null
-          }
-        />
+          </View>
+
+          <FlashList
+            data={communities}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            contentContainerStyle={[
+              communities.length === 0 ? styles.emptyList : styles.listContent,
+              { paddingBottom: listBottomPadding },
+              contentContainerStyle,
+            ]}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={() => void refetch()}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+              />
+            }
+            onEndReached={handleEndReached}
+            onEndReachedThreshold={0.4}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <EmptyView
+                title="No communities found"
+                message="Try adjusting your search or filters."
+                actionLabel="Clear filters"
+                onAction={handleClearFilters}
+              />
+            }
+            ListFooterComponent={listFooter}
+          />
+        </>
       )}
     </SafeAreaView>
   );

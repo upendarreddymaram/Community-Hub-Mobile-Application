@@ -5,7 +5,16 @@ export interface Post {
   body: string;
   authorName: string;
   createdAt: string;
+  updatedAt?: string;
+  isLocal?: boolean;
   isOptimistic?: boolean;
+}
+
+export interface UpdatePostPayload {
+  communityId: string;
+  postId: string;
+  title: string;
+  body: string;
 }
 
 export interface CreatePostPayload {

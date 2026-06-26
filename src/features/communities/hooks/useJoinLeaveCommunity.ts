@@ -4,6 +4,18 @@ import { useOfflineQueueStore } from '../../../store/offlineQueueStore';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { QUERY_KEYS } from '../../../utils/constants';
 import type { Community } from '../../../types/community';
+import { ApiError } from '../../../api/client';
+import { trackEvent } from '../../../utils/analytics';
+
+type CommunitiesListCache = {
+  pages: Array<{ data: Community[] }>;
+  pageParams: unknown[];
+};
+
+type JoinLeaveCacheSnapshot = {
+  detail: Community | undefined;
+  lists: Array<[queryKey: readonly unknown[], data: CommunitiesListCache | undefined]>;
+};
 
 export function useJoinLeaveCommunity(communityId: string) {
   const queryClient = useQueryClient();
@@ -16,7 +28,7 @@ export function useJoinLeaveCommunity(communityId: string) {
       (current) => (current ? updater(current) : current),
     );
 
-    queryClient.setQueriesData<{ pages: Array<{ data: Community[] }> }>(
+    queryClient.setQueriesData<CommunitiesListCache>(
       { queryKey: ['communities'] },
       (current) => {
         if (!current) {
@@ -35,15 +47,63 @@ export function useJoinLeaveCommunity(communityId: string) {
     );
   };
 
+  const captureCaches = (): JoinLeaveCacheSnapshot => ({
+    detail: queryClient.getQueryData<Community>(QUERY_KEYS.communityDetail(communityId)),
+    lists: queryClient.getQueriesData<CommunitiesListCache>({
+      queryKey: ['communities'],
+    }),
+  });
+
+  const restoreCaches = (snapshot: JoinLeaveCacheSnapshot) => {
+    queryClient.setQueryData(QUERY_KEYS.communityDetail(communityId), snapshot.detail);
+    for (const [queryKey, data] of snapshot.lists) {
+      queryClient.setQueryData(queryKey, data);
+    }
+  };
+
+  const resolveOfflineCommunity = (): Community => {
+    const detail = queryClient.getQueryData<Community>(
+      QUERY_KEYS.communityDetail(communityId),
+    );
+    if (detail) {
+      return detail;
+    }
+
+    const listQueries = queryClient.getQueriesData<CommunitiesListCache>({
+      queryKey: ['communities'],
+    });
+    for (const [, data] of listQueries) {
+      const match = data?.pages
+        .flatMap((page) => page.data)
+        .find((item) => item.id === communityId);
+      if (match) {
+        return match;
+      }
+    }
+
+    throw new ApiError(
+      'Community not available offline. Open it once while online.',
+      503,
+    );
+  };
+
   const joinMutation = useMutation({
-    mutationFn: () => communitiesApi.joinCommunity(communityId),
+    mutationFn: async () => {
+      if (!isOnline) {
+        const community = resolveOfflineCommunity();
+        return {
+          ...community,
+          isJoined: true,
+          memberCount: community.memberCount + 1,
+        };
+      }
+      return communitiesApi.joinCommunity(communityId);
+    },
     onMutate: async () => {
       await queryClient.cancelQueries({
         queryKey: QUERY_KEYS.communityDetail(communityId),
       });
-      const previous = queryClient.getQueryData<Community>(
-        QUERY_KEYS.communityDetail(communityId),
-      );
+      const previous = captureCaches();
 
       updateCaches((community) => ({
         ...community,
@@ -60,11 +120,11 @@ export function useJoinLeaveCommunity(communityId: string) {
     },
     onError: (_error, _variables, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(
-          QUERY_KEYS.communityDetail(communityId),
-          context.previous,
-        );
+        restoreCaches(context.previous);
       }
+    },
+    onSuccess: () => {
+      trackEvent('community_join', { communityId, offline: !isOnline });
     },
     onSettled: () => {
       if (isOnline) {
@@ -77,14 +137,22 @@ export function useJoinLeaveCommunity(communityId: string) {
   });
 
   const leaveMutation = useMutation({
-    mutationFn: () => communitiesApi.leaveCommunity(communityId),
+    mutationFn: async () => {
+      if (!isOnline) {
+        const community = resolveOfflineCommunity();
+        return {
+          ...community,
+          isJoined: false,
+          memberCount: Math.max(0, community.memberCount - 1),
+        };
+      }
+      return communitiesApi.leaveCommunity(communityId);
+    },
     onMutate: async () => {
       await queryClient.cancelQueries({
         queryKey: QUERY_KEYS.communityDetail(communityId),
       });
-      const previous = queryClient.getQueryData<Community>(
-        QUERY_KEYS.communityDetail(communityId),
-      );
+      const previous = captureCaches();
 
       updateCaches((community) => ({
         ...community,
@@ -101,11 +169,11 @@ export function useJoinLeaveCommunity(communityId: string) {
     },
     onError: (_error, _variables, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(
-          QUERY_KEYS.communityDetail(communityId),
-          context.previous,
-        );
+        restoreCaches(context.previous);
       }
+    },
+    onSuccess: () => {
+      trackEvent('community_leave', { communityId, offline: !isOnline });
     },
     onSettled: () => {
       if (isOnline) {
@@ -122,8 +190,8 @@ export function useJoinLeaveCommunity(communityId: string) {
     leave: leaveMutation.mutate,
     isJoining: joinMutation.isPending,
     isLeaving: leaveMutation.isPending,
-    joinError: joinMutation.error,
-    leaveError: leaveMutation.error,
+    joinError: isOnline ? joinMutation.error : null,
+    leaveError: isOnline ? leaveMutation.error : null,
     retryJoin: joinMutation.mutate,
     retryLeave: leaveMutation.mutate,
   };

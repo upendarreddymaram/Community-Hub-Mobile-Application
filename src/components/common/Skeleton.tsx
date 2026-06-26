@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { Animated, StyleSheet, View, type ViewStyle } from 'react-native';
 import { useTheme } from '../../providers/ThemeProvider';
+import { useAnimatedValue } from '../../utils/animatedValue';
 import { spacing } from '../../theme';
 
 interface SkeletonBoxProps {
@@ -17,7 +18,7 @@ export function SkeletonBox({
   style,
 }: SkeletonBoxProps) {
   const { colors } = useTheme();
-  const opacity = useRef(new Animated.Value(0.45)).current;
+  const opacity = useAnimatedValue(0.45);
 
   useEffect(() => {
     const pulse = Animated.loop(

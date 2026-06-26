@@ -24,7 +24,11 @@ function summarizePayload(data: unknown): unknown {
       };
     }
 
-    if ('topic_list' in record && record.topic_list && typeof record.topic_list === 'object') {
+    if (
+      'topic_list' in record &&
+      record.topic_list &&
+      typeof record.topic_list === 'object'
+    ) {
       const topicList = record.topic_list as { topics?: unknown[] };
       return {
         type: 'DiscourseCategoryTopicsResponse',

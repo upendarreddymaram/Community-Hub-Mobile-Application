@@ -7,7 +7,7 @@ import { useNetworkStatus } from './useNetworkStatus';
 
 export function useOfflineSync() {
   const queryClient = useQueryClient();
-  const { isOnline } = useNetworkStatus();
+  const { isOnline, isInitialized } = useNetworkStatus();
   const { queue, dequeue, isHydrated } = useOfflineQueueStore();
 
   const syncMutation = useMutation({
@@ -26,15 +26,22 @@ export function useOfflineSync() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['communities'] });
       void queryClient.invalidateQueries({ queryKey: ['community'] });
+      void queryClient.invalidateQueries({
+        predicate: (query) =>
+          Array.isArray(query.queryKey) &&
+          query.queryKey[0] === 'community' &&
+          query.queryKey[2] === 'posts',
+      });
     },
   });
 
+  const { mutate: syncQueue, isPending: isSyncing } = syncMutation;
+
   useEffect(() => {
-    if (isOnline && isHydrated && queue.length > 0 && !syncMutation.isPending) {
-      syncMutation.mutate();
+    if (isOnline && isInitialized && isHydrated && queue.length > 0 && !isSyncing) {
+      syncQueue();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline, isHydrated, queue.length]);
+  }, [isOnline, isInitialized, isHydrated, isSyncing, queue.length, syncQueue]);
 
   const syncError =
     syncMutation.error instanceof Error
@@ -45,8 +52,8 @@ export function useOfflineSync() {
 
   return {
     pendingCount: queue.length,
-    isSyncing: syncMutation.isPending,
+    isSyncing,
     syncError,
-    retrySync: () => syncMutation.mutate(),
+    retrySync: syncQueue,
   };
 }

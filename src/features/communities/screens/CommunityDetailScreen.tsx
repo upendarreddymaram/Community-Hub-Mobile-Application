@@ -1,20 +1,24 @@
-import React, { useCallback, useMemo } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
-  Button,
   CommunityDetailSkeleton,
-  PostListSkeleton,
+  ConfirmDialog,
   ErrorView,
   LoadingView,
   OfflineSyncBanner,
 } from '../../../components/common';
 import { ErrorBoundary } from '../../../components/common/ErrorBoundary';
-import { PostCard } from '../../../features/posts/components/PostCard';
+import { CommunityPostsEmptyState } from '../components/CommunityPostsEmptyState';
+import { CommunityPostsListHeader } from '../components/CommunityPostsListHeader';
+import { AnimatedPostCard } from '../../../features/posts/components/AnimatedPostCard';
 import { useCommunityDetail } from '../hooks/useCommunities';
 import { useJoinLeaveCommunity } from '../hooks/useJoinLeaveCommunity';
-import { useInfiniteCommunityPosts } from '../../../features/posts/hooks/usePosts';
+import {
+  useInfiniteCommunityPosts,
+  useDeletePost,
+} from '../../../features/posts/hooks/usePosts';
 import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
 import { useOfflineSync } from '../../../hooks/useOfflineSync';
 import { useResponsiveLayout } from '../../../hooks/useResponsiveLayout';
@@ -23,7 +27,8 @@ import { useThemedStyles } from '../../../hooks/useThemedStyles';
 import type { Post } from '../../../types/post';
 import type { MainStackParamList } from '../../../types/navigation';
 import type { ThemeColors } from '../../../theme/colors';
-import { spacing, typography } from '../../../theme';
+import { spacing } from '../../../theme';
+import { trackEvent } from '../../../utils/analytics';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'CommunityDetail'>;
 
@@ -39,87 +44,11 @@ function createStyles(colors: ThemeColors) {
     listContentEmpty: {
       flexGrow: 1,
     },
-    headerCard: {
-      backgroundColor: colors.surface,
-      margin: spacing.md,
-      padding: spacing.lg,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    headerCardWide: {
-      marginHorizontal: spacing.xl,
-    },
-    name: {
-      ...typography.title,
-      fontSize: 22,
-      color: colors.text,
-      marginBottom: spacing.sm,
-    },
-    description: {
-      ...typography.caption,
-      color: colors.textSecondary,
-      lineHeight: 22,
-      marginBottom: spacing.lg,
-    },
-    statsRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginBottom: spacing.lg,
-    },
-    statItem: {
-      alignItems: 'center',
-      flex: 1,
-    },
-    statValue: {
-      ...typography.subtitle,
-      color: colors.text,
-    },
-    statLabel: {
-      ...typography.small,
-      color: colors.textSecondary,
-      marginTop: spacing.xs,
-    },
-    membershipButton: {
-      marginBottom: spacing.sm,
-    },
-    createPostButton: {
-      marginTop: spacing.sm,
-    },
-    actionError: {
-      backgroundColor: colors.errorBackground,
-      borderRadius: 10,
-      padding: spacing.sm,
-      marginBottom: spacing.sm,
-    },
-    actionErrorText: {
-      color: colors.error,
-      ...typography.caption,
-      marginBottom: spacing.xs,
-    },
-    postsHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    sectionTitle: {
-      ...typography.subtitle,
-      color: colors.text,
-    },
     postItem: {
       paddingHorizontal: spacing.md,
     },
     postSeparator: {
       height: spacing.md,
-    },
-    emptyPosts: {
-      ...typography.caption,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      paddingVertical: spacing.lg,
-      paddingHorizontal: spacing.md,
     },
   });
 }
@@ -134,6 +63,9 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
 
   const communityQuery = useCommunityDetail(communityId);
   const postsQuery = useInfiniteCommunityPosts(communityId);
+  const deletePost = useDeletePost(communityId);
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [postPendingDelete, setPostPendingDelete] = useState<Post | null>(null);
   const {
     join,
     leave,
@@ -151,6 +83,8 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
     [postsQuery.data],
   );
 
+  const membershipError = joinError ?? leaveError;
+
   const handleToggleMembership = useCallback(() => {
     if (!community) {
       return;
@@ -162,12 +96,70 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
     }
   }, [community, join, leave]);
 
-  const membershipError = joinError ?? leaveError;
-
-  const handleRefresh = useCallback(() => {
-    void communityQuery.refetch();
+  const handleRefreshPosts = useCallback(() => {
     void postsQuery.refetch();
-  }, [communityQuery, postsQuery]);
+  }, [postsQuery]);
+
+  const handleCreatePost = useCallback(() => {
+    if (!community) {
+      return;
+    }
+    navigation.navigate('CreatePost', {
+      communityId,
+      communityName: community.name,
+    });
+  }, [community, communityId, navigation]);
+
+  const handleRetryMembership = useCallback(() => {
+    if (!community) {
+      return;
+    }
+    if (community.isJoined) {
+      retryLeave();
+    } else {
+      retryJoin();
+    }
+  }, [community, retryJoin, retryLeave]);
+
+  const handleEditPost = useCallback(
+    (post: Post) => {
+      if (!community) {
+        return;
+      }
+      navigation.navigate('CreatePost', {
+        communityId,
+        communityName: community.name,
+        postId: post.id,
+      });
+    },
+    [community, communityId, navigation],
+  );
+
+  const handleDeletePost = useCallback((post: Post) => {
+    setPostPendingDelete(post);
+  }, []);
+
+  const handleCancelDelete = useCallback(() => {
+    setPostPendingDelete(null);
+  }, []);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!postPendingDelete) {
+      return;
+    }
+    setDeletingPostId(postPendingDelete.id);
+    setPostPendingDelete(null);
+  }, [postPendingDelete]);
+
+  const handleDeleteAnimationComplete = useCallback(
+    (postId: string) => {
+      deletePost.mutate(postId, {
+        onSuccess: () => trackEvent('post_delete', { communityId, postId }),
+        onSettled: () => setDeletingPostId(null),
+      });
+    },
+    [communityId, deletePost],
+  );
 
   const handleLoadMorePosts = useCallback(() => {
     if (postsQuery.hasNextPage && !postsQuery.isFetchingNextPage) {
@@ -178,10 +170,22 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
   const renderPost = useCallback(
     ({ item }: { item: Post }) => (
       <View style={styles.postItem}>
-        <PostCard post={item} />
+        <AnimatedPostCard
+          post={item}
+          isDeleting={deletingPostId === item.id}
+          onEdit={handleEditPost}
+          onDelete={handleDeletePost}
+          onDeleteAnimationComplete={handleDeleteAnimationComplete}
+        />
       </View>
     ),
-    [styles.postItem],
+    [
+      deletingPostId,
+      handleDeleteAnimationComplete,
+      handleDeletePost,
+      handleEditPost,
+      styles.postItem,
+    ],
   );
 
   const renderSeparator = useCallback(
@@ -197,94 +201,28 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
     }
 
     return (
-      <>
-        <View style={[styles.headerCard, isWide && styles.headerCardWide]}>
-          <Text style={styles.name} accessibilityRole="header">
-            {community.name}
-          </Text>
-          <Text style={styles.description}>{community.description}</Text>
-
-          <View style={styles.statsRow} accessibilityRole="summary">
-            <StatItem label="Members" value={community.memberCount.toLocaleString()} styles={styles} />
-            <StatItem label="Posts" value={community.postCount.toLocaleString()} styles={styles} />
-            <StatItem label="Category" value={community.category} styles={styles} />
-          </View>
-
-          <Button
-            label={community.isJoined ? 'Leave Community' : 'Join Community'}
-            variant={community.isJoined ? 'secondary' : 'primary'}
-            loading={isJoining || isLeaving}
-            onPress={handleToggleMembership}
-            style={styles.membershipButton}
-            accessibilityLabel={
-              community.isJoined
-                ? `Leave ${community.name}`
-                : `Join ${community.name}`
-            }
-            accessibilityHint={
-              community.isJoined
-                ? 'Removes this community from your joined list'
-                : 'Adds this community to your joined list'
-            }
-          />
-
-          {membershipError ? (
-            <View style={styles.actionError} accessibilityLiveRegion="polite">
-              <Text style={styles.actionErrorText}>
-                {membershipError instanceof Error
-                  ? membershipError.message
-                  : 'Action failed'}
-              </Text>
-              <Button
-                label="Retry"
-                variant="ghost"
-                onPress={() => (community.isJoined ? retryLeave() : retryJoin())}
-                accessibilityLabel={
-                  community.isJoined ? 'Retry leave community' : 'Retry join community'
-                }
-              />
-            </View>
-          ) : null}
-
-          <Button
-            label="Create Post"
-            onPress={() =>
-              navigation.navigate('CreatePost', {
-                communityId,
-                communityName: community.name,
-              })
-            }
-            style={styles.createPostButton}
-            accessibilityHint={`Opens the create post form for ${community.name}`}
-          />
-        </View>
-
-        <View style={styles.postsHeader}>
-          <Text style={styles.sectionTitle} accessibilityRole="header">
-            Posts
-          </Text>
-          <Button
-            label="Refresh"
-            variant="secondary"
-            onPress={handleRefresh}
-            accessibilityLabel="Refresh community and posts"
-          />
-        </View>
-      </>
+      <CommunityPostsListHeader
+        community={community}
+        isWide={isWide}
+        isJoining={isJoining}
+        isLeaving={isLeaving}
+        membershipError={membershipError}
+        onToggleMembership={handleToggleMembership}
+        onCreatePost={handleCreatePost}
+        onRetryMembership={handleRetryMembership}
+        onRefreshPosts={handleRefreshPosts}
+      />
     );
   }, [
     community,
-    communityId,
-    handleRefresh,
+    handleCreatePost,
+    handleRefreshPosts,
+    handleRetryMembership,
     handleToggleMembership,
     isJoining,
     isLeaving,
-    membershipError,
     isWide,
-    navigation,
-    retryJoin,
-    retryLeave,
-    styles,
+    membershipError,
   ]);
 
   const listFooter = useMemo(() => {
@@ -295,28 +233,20 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
     return null;
   }, [postsQuery.isFetchingNextPage]);
 
-  const listEmpty = useMemo(() => {
-    if (postsQuery.isLoading) {
-      return <PostListSkeleton />;
-    }
-
-    if (postsQuery.isError) {
-      return (
-        <ErrorView
-          message={
-            postsQuery.error instanceof Error
-              ? postsQuery.error.message
-              : 'Failed to load posts'
-          }
-          onRetry={() => void postsQuery.refetch()}
-        />
-      );
-    }
-
-    return (
-      <Text style={styles.emptyPosts}>No posts yet. Be the first to share!</Text>
-    );
-  }, [postsQuery.error, postsQuery.isError, postsQuery.isLoading, postsQuery.refetch, styles.emptyPosts]);
+  const listEmpty = useMemo(
+    () => (
+      <CommunityPostsEmptyState
+        isLoading={postsQuery.isLoading}
+        isError={postsQuery.isError}
+        isOnline={isOnline}
+        errorMessage={
+          postsQuery.error instanceof Error ? postsQuery.error.message : undefined
+        }
+        onRetry={() => void postsQuery.refetch()}
+      />
+    ),
+    [isOnline, postsQuery],
+  );
 
   if (communityQuery.isLoading && !community) {
     return (
@@ -330,9 +260,11 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
     return (
       <ErrorView
         message={
-          communityQuery.error instanceof Error
-            ? communityQuery.error.message
-            : 'Failed to load community'
+          !isOnline
+            ? 'You are offline and this community is not cached yet. Open it once while online.'
+            : communityQuery.error instanceof Error
+              ? communityQuery.error.message
+              : 'Failed to load community'
         }
         onRetry={() => void communityQuery.refetch()}
       />
@@ -354,6 +286,18 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
           onRetrySync={retrySync}
         />
 
+        <ConfirmDialog
+          visible={postPendingDelete !== null}
+          title="Delete post?"
+          message="This will permanently remove your post from this device."
+          detail={postPendingDelete?.title}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="destructive"
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
+        />
+
         <FlashList
           data={posts}
           renderItem={renderPost}
@@ -371,8 +315,8 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
           ]}
           refreshControl={
             <RefreshControl
-              refreshing={communityQuery.isRefetching || postsQuery.isRefetching}
-              onRefresh={handleRefresh}
+              refreshing={postsQuery.isRefetching}
+              onRefresh={handleRefreshPosts}
               tintColor={colors.primary}
               colors={[colors.primary]}
             />
@@ -381,22 +325,5 @@ export function CommunityDetailScreen({ route, navigation }: Props) {
         />
       </View>
     </ErrorBoundary>
-  );
-}
-
-function StatItem({
-  label,
-  value,
-  styles,
-}: {
-  label: string;
-  value: string;
-  styles: ReturnType<typeof createStyles>;
-}) {
-  return (
-    <View style={styles.statItem} accessibilityLabel={`${label}: ${value}`}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
   );
 }

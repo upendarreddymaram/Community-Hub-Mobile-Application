@@ -17,11 +17,17 @@ import { ApiAuthBootstrap } from './ApiAuthBootstrap';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 2,
+      retry: (failureCount, error) => {
+        if (error instanceof Error && error.message.includes('not available offline')) {
+          return false;
+        }
+        return failureCount < 2;
+      },
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
       gcTime: 1000 * 60 * 60 * 24,
       staleTime: 1000 * 60,
       refetchOnReconnect: true,
+      networkMode: 'offlineFirst',
     },
     mutations: {
       retry: 1,

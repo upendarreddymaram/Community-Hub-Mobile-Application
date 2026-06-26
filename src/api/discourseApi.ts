@@ -1,8 +1,13 @@
-import type { Community, CommunitiesResponse, CommunityFilters } from '../types/community';
+import type {
+  Community,
+  CommunitiesResponse,
+  CommunityFilters,
+} from '../types/community';
 import type { Post, PostsPageResponse } from '../types/post';
 import { API_CONFIG } from '../utils/constants';
 import { sortCommunities } from '../utils/communitySort';
 import { stripHtml } from '../utils/html';
+import { saveCommunitiesSnapshot } from '../utils/communitiesSnapshot';
 import { logApiInfo } from '../utils/apiLogger';
 import { ApiError, apiRequest } from './client';
 import type {
@@ -16,6 +21,12 @@ const CATEGORY_CACHE_TTL_MS = 1000 * 60 * 5;
 
 let cachedCategories: DiscourseCategory[] | null = null;
 let categoriesCachedAt = 0;
+
+/** Clears in-memory category cache — for tests only. */
+export function resetDiscourseCategoryCache(): void {
+  cachedCategories = null;
+  categoriesCachedAt = 0;
+}
 
 async function fetchCategories(): Promise<DiscourseCategory[]> {
   const now = Date.now();
@@ -148,12 +159,14 @@ export const discourseApi = {
     const all = categories.map((item) =>
       mapDiscourseCategory(item, categoriesById, joinedIds.has(String(item.id))),
     );
+
+    if (page === 1) {
+      await saveCommunitiesSnapshot(all);
+    }
+
     const filtered = applyCommunityFilters(all, filters);
     const totalCount = filtered.length;
-    const totalPages = Math.max(
-      1,
-      Math.ceil(totalCount / API_CONFIG.DEFAULT_PAGE_SIZE),
-    );
+    const totalPages = Math.max(1, Math.ceil(totalCount / API_CONFIG.DEFAULT_PAGE_SIZE));
     const safePage = Math.min(Math.max(page, 1), totalPages);
     const start = (safePage - 1) * API_CONFIG.DEFAULT_PAGE_SIZE;
     const pageData = filtered.slice(start, start + API_CONFIG.DEFAULT_PAGE_SIZE);
@@ -174,10 +187,7 @@ export const discourseApi = {
     };
   },
 
-  getCommunityById: async (
-    id: string,
-    joinedIds: Set<string>,
-  ): Promise<Community> => {
+  getCommunityById: async (id: string, joinedIds: Set<string>): Promise<Community> => {
     const categories = await fetchCategories();
     const categoriesById = new Map(categories.map((item) => [item.id, item]));
     const category = categories.find((item) => String(item.id) === id);
@@ -191,11 +201,7 @@ export const discourseApi = {
         `${API_CONFIG.DISCOURSE_BASE_URL}/c/${category.slug}/${category.id}.json`,
       );
       if (live.category) {
-        return mapDiscourseCategory(
-          live.category,
-          categoriesById,
-          joinedIds.has(id),
-        );
+        return mapDiscourseCategory(live.category, categoriesById, joinedIds.has(id));
       }
     } catch {
       // Fall back to cached category metadata when live refresh fails.
@@ -218,7 +224,10 @@ export const discourseApi = {
     return page.data;
   },
 
-  getTopicsPage: async (communityId: string, page: number): Promise<PostsPageResponse> => {
+  getTopicsPage: async (
+    communityId: string,
+    page: number,
+  ): Promise<PostsPageResponse> => {
     const category = await discourseApi.getCategoryById(communityId);
     const response = await apiRequest<DiscourseCategoryTopicsResponse>(
       `${API_CONFIG.DISCOURSE_BASE_URL}/c/${category.slug}/${category.id}.json?page=${page}`,
@@ -227,9 +236,7 @@ export const discourseApi = {
     const posts = response.topic_list.topics
       .filter((topic) => !topic.pinned)
       .map((topic) => mapDiscourseTopic(topic, communityId, response.users))
-      .sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const hasMore = Boolean(response.topic_list.more_topics_url);
 
