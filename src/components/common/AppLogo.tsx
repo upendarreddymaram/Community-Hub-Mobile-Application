@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, ImageStyle, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
-import { radii } from '../../theme';
+import { useTheme } from '../../providers/ThemeProvider';
+import { radii, spacing } from '../../theme';
 
 const appLogo = require('../../assets/images/applogo.png');
 
@@ -18,6 +19,8 @@ interface AppLogoProps {
   style?: StyleProp<ImageStyle>;
   containerStyle?: StyleProp<ViewStyle>;
   rounded?: boolean;
+  /** White card behind logo — use on dark/colored backgrounds (logo PNG has a light backdrop). */
+  elevated?: boolean;
 }
 
 export function AppLogo({
@@ -25,14 +28,28 @@ export function AppLogo({
   style,
   containerStyle,
   rounded = true,
+  elevated = false,
 }: AppLogoProps) {
+  const { colors, isDark } = useTheme();
   const dimension = LOGO_SIZES[size];
 
   return (
     <View
       style={[
+        styles.wrapper,
         rounded && styles.rounded,
-        { width: dimension, height: dimension },
+        elevated && {
+          backgroundColor: colors.logoBackdrop,
+          borderRadius: radii.lg,
+          padding: spacing.sm,
+          borderWidth: 1,
+          borderColor: colors.logoBorder,
+          shadowColor: colors.shadow,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDark ? 0.35 : 0.12,
+          shadowRadius: 8,
+          elevation: isDark ? 6 : 4,
+        },
         containerStyle,
       ]}
     >
@@ -47,6 +64,10 @@ export function AppLogo({
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   rounded: {
     borderRadius: radii.lg,
     overflow: 'hidden',

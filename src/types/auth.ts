@@ -9,6 +9,11 @@ export interface AuthSession {
   user: User;
 }
 
+/** User profile persisted in AsyncStorage (token stored separately in Keychain). */
+export interface PersistedAuthProfile {
+  user: User;
+}
+
 export interface LoginCredentials {
   email: string;
   password: string;

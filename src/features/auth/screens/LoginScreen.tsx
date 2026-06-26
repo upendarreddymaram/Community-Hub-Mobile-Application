@@ -9,11 +9,103 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Input, AppLogo } from '../../components/common';
-import { useLoginForm } from '../../hooks/useLoginForm';
-import { colors, radii, spacing, typography } from '../../theme';
+import { Button, Input, AppLogo } from '../../../components/common';
+import { useLoginForm } from '../hooks/useLoginForm';
+import { useThemedStyles } from '../../../hooks/useThemedStyles';
+import type { ThemeColors } from '../../../theme/colors';
+import { radii, spacing, typography } from '../../../theme';
+
+const SHEET_RADIUS = 28;
+
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: colors.primary,
+    },
+    headerSafe: {
+      backgroundColor: colors.primary,
+      width: '100%',
+      alignItems: 'center',
+    },
+    header: {
+      width: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.xl,
+    },
+    logo: {
+      alignSelf: 'center',
+    },
+    flex: {
+      flex: 1,
+    },
+    sheetScroll: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: SHEET_RADIUS,
+      borderTopRightRadius: SHEET_RADIUS,
+    },
+    sheetContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.lg,
+    },
+    greeting: {
+      fontSize: 28,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: spacing.sm,
+    },
+    subtitle: {
+      ...typography.body,
+      color: colors.textSecondary,
+      lineHeight: 24,
+      marginBottom: spacing.xl,
+    },
+    form: {
+      gap: 0,
+    },
+    errorBanner: {
+      backgroundColor: colors.errorBackground,
+      borderRadius: radii.md,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+    },
+    errorText: {
+      ...typography.caption,
+      color: colors.error,
+      lineHeight: 20,
+    },
+    demoLink: {
+      alignSelf: 'center',
+      marginTop: spacing.xl,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+    },
+    demoLinkPressed: {
+      opacity: 0.6,
+    },
+    demoLinkText: {
+      ...typography.body,
+      color: colors.primary,
+      fontWeight: '600',
+    },
+    footerSafe: {
+      backgroundColor: colors.surface,
+    },
+    footer: {
+      ...typography.small,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      paddingBottom: spacing.sm,
+    },
+  });
+}
 
 export function LoginScreen() {
+  const styles = useThemedStyles(createStyles);
   const {
     email,
     password,
@@ -33,7 +125,7 @@ export function LoginScreen() {
     <View style={styles.root}>
       <SafeAreaView style={styles.headerSafe} edges={['top']}>
         <View style={styles.header}>
-          <AppLogo size="lg" containerStyle={styles.logo} />
+          <AppLogo size="lg" elevated containerStyle={styles.logo} />
         </View>
       </SafeAreaView>
 
@@ -50,7 +142,9 @@ export function LoginScreen() {
           <Text style={styles.greeting} accessibilityRole="header">
             Welcome back
           </Text>
-          <Text style={styles.subtitle}>Sign in to explore communities and join the conversation.</Text>
+          <Text style={styles.subtitle}>
+            Sign in to explore communities and join the conversation.
+          </Text>
 
           <View style={styles.form}>
             <Input
@@ -115,88 +209,3 @@ export function LoginScreen() {
     </View>
   );
 }
-
-const SHEET_RADIUS = 28;
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.primary,
-  },
-  headerSafe: {
-    backgroundColor: colors.primary,
-  },
-  header: {
-    alignItems: 'center',
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
-  },
-  logo: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.xs,
-  },
-  flex: {
-    flex: 1,
-  },
-  sheetScroll: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: SHEET_RADIUS,
-    borderTopRightRadius: SHEET_RADIUS,
-  },
-  sheetContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
-  },
-  greeting: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  subtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
-    lineHeight: 24,
-    marginBottom: spacing.xl,
-  },
-  form: {
-    gap: 0,
-  },
-  errorBanner: {
-    backgroundColor: colors.errorBackground,
-    borderRadius: radii.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  errorText: {
-    ...typography.caption,
-    color: colors.error,
-    lineHeight: 20,
-  },
-  demoLink: {
-    alignSelf: 'center',
-    marginTop: spacing.xl,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  demoLinkPressed: {
-    opacity: 0.6,
-  },
-  demoLinkText: {
-    ...typography.body,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  footerSafe: {
-    backgroundColor: colors.surface,
-  },
-  footer: {
-    ...typography.small,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    paddingBottom: spacing.sm,
-  },
-});

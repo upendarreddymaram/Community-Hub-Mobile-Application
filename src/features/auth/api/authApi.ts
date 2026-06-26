@@ -1,5 +1,6 @@
-import type { AuthSession, LoginCredentials } from '../types/auth';
-import { simulateNetwork } from './client';
+import type { AuthSession, LoginCredentials } from '../../../types/auth';
+import { logApiInfo } from '../../../utils/apiLogger';
+import { simulateNetwork } from '../../../api/client';
 
 const MOCK_USERS = [
   { email: 'demo@communityhub.com', password: 'Password123!', name: 'Demo User' },
@@ -19,7 +20,7 @@ export const authApi = {
         throw new Error('Invalid email or password');
       }
 
-      return {
+      const session: AuthSession = {
         token: `mock_token_${Date.now()}`,
         user: {
           id: `user_${user.email}`,
@@ -27,6 +28,13 @@ export const authApi = {
           name: user.name,
         },
       };
+
+      logApiInfo('Mock auth login success', {
+        email: user.email,
+        name: user.name,
+      });
+
+      return session;
     });
   },
 };

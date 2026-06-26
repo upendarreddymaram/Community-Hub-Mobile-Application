@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { hasValidationErrors, validateLogin } from '../utils/validation';
-import type { LoginFormErrors } from '../types/auth';
+import { hasValidationErrors, validateLogin } from '../../../utils/validation';
+import type { LoginFormErrors } from '../../../types/auth';
 
 /** Primary demo account — one-tap for evaluators and local testing. */
 export const DEMO_CREDENTIALS = {

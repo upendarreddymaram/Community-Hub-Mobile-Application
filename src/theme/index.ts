@@ -1,22 +1,4 @@
-export const colors = {
-  primary: '#2563EB',
-  primaryDark: '#1D4ED8',
-  primaryMuted: '#EFF6FF',
-  background: '#F8FAFC',
-  surface: '#FFFFFF',
-  text: '#0F172A',
-  textSecondary: '#64748B',
-  border: '#E2E8F0',
-  error: '#DC2626',
-  errorBackground: '#FEF2F2',
-  success: '#16A34A',
-  successBackground: '#F0FDF4',
-  warning: '#D97706',
-  offline: '#92400E',
-  offlineBackground: '#FEF3C7',
-  overlay: 'rgba(15, 23, 42, 0.6)',
-  shadow: '#000000',
-} as const;
+export { colors, darkColors, lightColors, type ThemeColors } from './colors';
 
 export const spacing = {
   xs: 4,
