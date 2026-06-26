@@ -2,6 +2,7 @@ export type CommunitySortOption = 'name' | 'members' | 'newest';
 
 export interface Community {
   id: string;
+  slug: string;
   name: string;
   description: string;
   memberCount: number;
